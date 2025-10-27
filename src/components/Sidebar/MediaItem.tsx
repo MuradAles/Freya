@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, Music, Image, Trash2, MoreVertical } from 'lucide-react';
+import { Video, Music, Image, Trash2, MoreVertical, Play } from 'lucide-react';
 import type { MediaAsset } from '../../types/media';
 import { useMediaStore } from '../../store/mediaStore';
 import { useUIStore } from '../../store/uiStore';
+import { pathToFileURL } from '../../utils/fileHandling';
 
 interface MediaItemProps {
   media: MediaAsset;
@@ -17,8 +18,11 @@ export default function MediaItem({ media }: MediaItemProps) {
   const [audioTimeout, setAudioTimeout] = useState<NodeJS.Timeout | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [previewDataURL, setPreviewDataURL] = useState<string | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -75,10 +79,9 @@ export default function MediaItem({ media }: MediaItemProps) {
     console.log('Double-click to add to timeline:', media.name);
   };
 
-  // Load file as data URL when hovering
+  // Load file as data URL when hovering (audio only)
   const loadPreviewData = async () => {
-    // Skip video preview - too heavy for large files (causes lag)
-    // Audio preview works fine
+    // Audio preview loads file as data URL
     if (!previewDataURL && media.type === 'audio') {
       console.log('🔄 Loading audio preview for:', media.name);
       try {
@@ -94,6 +97,43 @@ export default function MediaItem({ media }: MediaItemProps) {
       }
     }
   };
+
+  // Handle video playback on hover with 0.5s delay
+  useEffect(() => {
+    if (media.type !== 'video' || !videoRef.current) return;
+
+    const video = videoRef.current;
+    
+    if (isHovering) {
+      // Delay video playback by 0.5 seconds
+      const timeout = setTimeout(() => {
+        const playVideo = async () => {
+          try {
+            video.currentTime = 0;
+            await video.play();
+            setIsVideoPlaying(true);
+          } catch (err) {
+            // Ignore AbortError - video was removed during play
+            if (err instanceof Error && err.name !== 'AbortError') {
+              console.error('Video play error:', err);
+            }
+          }
+        };
+        playVideo();
+      }, 500);
+
+      return () => clearTimeout(timeout);
+    } else {
+      // Stop and reset video when not hovering
+      try {
+        video.pause();
+        video.currentTime = 0;
+      } catch (err) {
+        // Ignore errors when stopping
+      }
+      setIsVideoPlaying(false);
+    }
+  }, [isHovering, media.type]);
   
   return (
     <div 
@@ -110,12 +150,12 @@ export default function MediaItem({ media }: MediaItemProps) {
         // Load preview data for video/audio
         loadPreviewData();
 
-        // Delay audio preview by 1 second
+        // Delay audio preview by 0.5 seconds
         if (media.type === 'audio') {
           const timeout = setTimeout(() => {
             // Audio will start playing after timeout
             setAudioTimeout(null);
-          }, 1000);
+          }, 500);
           setAudioTimeout(timeout);
         }
       }}
@@ -131,13 +171,37 @@ export default function MediaItem({ media }: MediaItemProps) {
           audioRef.current.pause();
           audioRef.current.currentTime = 0;
         }
+        setIsAudioPlaying(false);
       }}
       style={{ aspectRatio: '4/3' }}
     >
       {/* Thumbnail */}
       <div className="w-full h-3/4 bg-black flex items-center justify-center overflow-hidden rounded-t-lg relative">
         {(() => {
-          // Show thumbnail
+          // Show video preview when hovering
+          if (media.type === 'video' && isHovering) {
+            const videoUrl = pathToFileURL(media.path);
+            return (
+              <>
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  className="w-full h-full object-contain bg-black"
+                  loop
+                  playsInline
+                />
+                
+                {/* Playing indicator - only show when actually playing */}
+                {isVideoPlaying && (
+                  <div className="absolute bottom-1 right-1 bg-purple-600/90 rounded p-1.5">
+                    <Play className="w-3 h-3 text-white" fill="white" />
+                  </div>
+                )}
+              </>
+            );
+          }
+
+          // Show static thumbnail
           if (media.thumbnail) {
             return (
               <>
@@ -152,11 +216,13 @@ export default function MediaItem({ media }: MediaItemProps) {
                   }}
                   onLoad={() => console.log('Thumbnail loaded for:', media.name)}
                 />
-
-                {/* Duration overlay at bottom-right for video/audio */}
-                {(media.type === 'video' || media.type === 'audio') && media.duration > 0 && (
-                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
-                    {formatDuration(media.duration)}
+                
+                {/* Duration overlay at bottom-left - hide when hovering */}
+                {(media.type === 'video' || media.type === 'audio') && media.duration > 0 && !isHovering && (
+                  <div className="absolute bottom-1 left-1 bg-black/70 px-1.5 py-0.5 rounded">
+                    <p className="text-[10px] text-white font-medium">
+                      {formatDuration(media.duration)}
+                    </p>
                   </div>
                 )}
               </>
@@ -178,16 +244,22 @@ export default function MediaItem({ media }: MediaItemProps) {
             src={previewDataURL}
             autoPlay
             className="hidden"
-            onPlay={() => console.log('🔊 Audio started playing')}
-            onPause={() => console.log('⏸️ Audio paused')}
+            onPlay={() => {
+              console.log('🔊 Audio started playing');
+              setIsAudioPlaying(true);
+            }}
+            onPause={() => {
+              console.log('⏸️ Audio paused');
+              setIsAudioPlaying(false);
+            }}
             onError={(e) => console.error('❌ Audio error:', e.target)}
           />
         )}
         
-        {/* Play indicator for audio - subtle bottom-right corner */}
-        {media.type === 'audio' && isHovering && (
-          <div className="absolute bottom-2 right-2 bg-purple-600 rounded-full p-2 z-10">
-            <Music className="w-4 h-4 text-white animate-pulse" />
+        {/* Playing indicator for audio when actually playing */}
+        {media.type === 'audio' && isHovering && isAudioPlaying && (
+          <div className="absolute bottom-1 right-1 bg-purple-600/90 rounded p-1.5">
+            <Play className="w-3 h-3 text-white" fill="white" />
           </div>
         )}
       </div>
@@ -200,7 +272,7 @@ export default function MediaItem({ media }: MediaItemProps) {
       </div>
       
       {/* Three-dot menu - Shows menu options when clicked */}
-      <div className="absolute top-2 right-2 z-20" ref={menuRef}>
+      <div className="absolute top-1 right-1 z-20" ref={menuRef}>
         {showMenu ? (
           // Menu dropdown
           <div className="bg-gray-800 border border-gray-600 rounded shadow-lg">

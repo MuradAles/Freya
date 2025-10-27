@@ -19,6 +19,7 @@ const createWindow = () => {
       contextIsolation: true,
       // Enable proper file system access
       sandbox: false,
+      webSecurity: false, // Allow local file:// URLs for video playback
     },
   });
 

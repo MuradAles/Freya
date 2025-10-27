@@ -239,28 +239,28 @@ npm install -D @types/fluent-ffmpeg
 ## Phase 5: Basic Video Preview (1 hour) 🔴
 
 ### Video Player Component
-- [ ] Create `VideoPlayer.tsx`
-- [ ] Add HTML5 `<video>` element
-- [ ] Style to fit preview area
-- [ ] Add ref for programmatic control
+- [x] Create `VideoPlayer.tsx`
+- [x] Add HTML5 `<video>` element
+- [x] Style to fit preview area
+- [x] Add ref for programmatic control
 
 ### Playback Controls
-- [ ] Create `PlaybackControls.tsx`
-- [ ] Implement play button
-  - [ ] Toggle play/pause
-  - [ ] Update icon
-- [ ] Implement pause button
-- [ ] Add timecode display
-  - [ ] Current time / Total duration
-  - [ ] Format as MM:SS
+- [x] Create `PlaybackControls.tsx`
+- [x] Implement play button
+  - [x] Toggle play/pause
+  - [x] Update icon
+- [x] Implement pause button
+- [x] Add timecode display
+  - [x] Current time / Total duration
+  - [x] Format as MM:SS
 
 ### Preview Integration
-- [ ] When media item clicked in grid:
-  - [ ] Load video source
-  - [ ] Show in preview player
-  - [ ] Enable playback controls
-- [ ] Update timecode during playback
-- [ ] Handle video ended event
+- [x] When media item clicked in grid:
+  - [x] Load video source
+  - [x] Show in preview player
+  - [x] Enable playback controls
+- [x] Update timecode during playback
+- [x] Handle video ended event
 
 **End of Phase 5 Checkpoint:**
 ✅ Can click a video in media grid

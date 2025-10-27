@@ -5,6 +5,14 @@ export function getFileExtension(filename: string): string {
   return filename.toLowerCase().split('.').pop() || '';
 }
 
+export function pathToFileURL(filePath: string): string {
+  // Convert Windows path to file:// URL
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  // Escape special characters
+  const encodedPath = encodeURIComponent(normalizedPath).replace(/%2F/g, '/');
+  return `file:///${encodedPath}`;
+}
+
 export function determineMediaType(filePath: string): 'video' | 'audio' | 'image' {
   const ext = getFileExtension(filePath);
   
