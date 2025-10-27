@@ -25,12 +25,12 @@
 **Status:** ⬜ Not Started | ⏳ In Progress | ✅ Complete
 
 ### Dependencies Installation
-- [ ] Install Tailwind CSS (if not already)
-- [ ] Install Zustand for state management
-- [ ] Install fluent-ffmpeg
-- [ ] Install @ffmpeg-installer/ffmpeg
-- [ ] Install lucide-react (icons)
-- [ ] Install wavesurfer.js (audio waveforms)
+- [x] Install Tailwind CSS (if not already)
+- [x] Install Zustand for state management
+- [x] Install fluent-ffmpeg
+- [x] Install @ffmpeg-installer/ffmpeg
+- [x] Install lucide-react (icons)
+- [x] Install wavesurfer.js (audio waveforms)
 
 ```bash
 npm install tailwindcss zustand fluent-ffmpeg @ffmpeg-installer/ffmpeg lucide-react wavesurfer.js
@@ -38,70 +38,70 @@ npm install -D @types/fluent-ffmpeg
 ```
 
 ### Project Structure Setup
-- [ ] Create `/src/components` folder structure:
-  - [ ] `/Sidebar` (MediaLibrary, RecordingPanel, MediaGrid)
-  - [ ] `/Timeline` (Timeline, Track, Clip, Playhead, TimelineRuler)
-  - [ ] `/Preview` (PreviewCanvas, VideoPlayer, PlaybackControls)
-  - [ ] `/Properties` (PropertiesPanel, SpeedControl, VolumeControl, FadeControls)
-  - [ ] `/Dialogs` (RecordingDialog, ExportDialog, ProgressDialog)
-- [ ] Create `/src/store` folder (timelineStore, mediaStore, uiStore)
-- [ ] Create `/src/hooks` folder
-- [ ] Create `/src/utils` folder
-- [ ] Create `/electron` folder for main process code
+- [x] Create `/src/components` folder structure:
+  - [x] `/Sidebar` (MediaLibrary, RecordingPanel, MediaGrid)
+  - [x] `/Timeline` (Timeline, Track, Clip, Playhead, TimelineRuler)
+  - [x] `/Preview` (PreviewCanvas, VideoPlayer, PlaybackControls)
+  - [x] `/Properties` (PropertiesPanel, SpeedControl, VolumeControl, FadeControls)
+  - [x] `/Dialogs` (RecordingDialog, ExportDialog, ProgressDialog)
+- [x] Create `/src/store` folder (timelineStore, mediaStore, uiStore)
+- [x] Create `/src/hooks` folder
+- [x] Create `/src/utils` folder
+- [x] Create `/electron` folder for main process code
 
 ---
 
 ## Phase 2: Basic Layout (2 hours) 🔴
 
 ### Main App Layout
-- [ ] Create 3-column layout component
-  - [ ] Left sidebar (300px fixed)
-  - [ ] Center preview (flexible)
-  - [ ] Right properties panel (300px fixed)
-- [ ] Add timeline section at bottom (250px fixed)
-- [ ] Make layout responsive
+- [x] Create 3-column layout component
+  - [x] Left sidebar (300px fixed)
+  - [x] Center preview (flexible)
+  - [x] Right properties panel (300px fixed)
+- [x] Add timeline section at bottom (250px fixed)
+- [x] Make layout responsive
 - [ ] Add dark theme styling (matching CapCut/Clipchamp)
 
 ### Sidebar Structure
-- [ ] Create `Sidebar.tsx` container
-- [ ] Add "ClipForge" header with logo
-- [ ] Create collapsible recording section at top
-- [ ] Add "Import Media" button (prominent, purple)
-- [ ] Create 2-column media grid container
-- [ ] Add scroll area for media items
+- [x] Create `Sidebar.tsx` container
+- [x] Add "ClipForge" header with logo
+- [x] Create collapsible recording section at top
+- [x] Add "Import Media" button (prominent, purple)
+- [x] Create 2-column media grid container
+- [x] Add scroll area for media items
 
 ### Preview Area Structure
-- [ ] Create `PreviewCanvas.tsx` container
-- [ ] Add video player placeholder (black background)
-- [ ] Add playback controls bar below player
-  - [ ] Previous frame button
-  - [ ] Play/Pause button
-  - [ ] Next frame button
-  - [ ] Timecode display (00:00 / 00:00)
+- [x] Create `PreviewCanvas.tsx` container
+- [x] Add video player placeholder (black background)
+- [x] Add playback controls bar below player
+  - [x] Previous frame button
+  - [x] Play/Pause button
+  - [x] Next frame button
+  - [x] Timecode display (00:00 / 00:00)
 - [ ] Add canvas for overlay positioning (later)
 
 ### Properties Panel Structure
-- [ ] Create `PropertiesPanel.tsx` container
-- [ ] Show "No Selection" placeholder initially
-- [ ] Prepare sections for:
-  - [ ] Speed control
-  - [ ] Volume control
-  - [ ] Fade in/out
-  - [ ] Position controls
-  - [ ] Filters (placeholder)
-  - [ ] Effects (placeholder)
+- [x] Create `PropertiesPanel.tsx` container
+- [x] Show "No Selection" placeholder initially
+- [x] Prepare sections for:
+  - [x] Speed control
+  - [x] Volume control
+  - [x] Fade in/out
+  - [x] Position controls
+  - [x] Filters (placeholder)
+  - [x] Effects (placeholder)
 
 ### Timeline Structure
-- [ ] Create `Timeline.tsx` container
-- [ ] Add zoom controls (top-right)
-  - [ ] [-] button
-  - [ ] Slider
-  - [ ] [+] button
-- [ ] Add [Export] button (top-right)
-- [ ] Create time ruler area (showing 0s, 1:00, 2:00, etc.)
-- [ ] Create tracks container
-- [ ] Add [+ Add Track] button at bottom
-- [ ] Style with dark theme
+- [x] Create `Timeline.tsx` container
+- [x] Add zoom controls (top-right)
+  - [x] [-] button
+  - [x] Slider placeholder
+  - [x] [+] button
+- [x] Add [Export] button (top-right)
+- [x] Create time ruler area (showing 0s, 1:00, 2:00, etc.)
+- [x] Create tracks container
+- [x] Add [+ Add Track] button at bottom
+- [x] Style with dark theme
 
 **End of Phase 2 Checkpoint:**
 ✅ App shows complete layout with all sections visible
@@ -112,44 +112,44 @@ npm install -D @types/fluent-ffmpeg
 ## Phase 3: State Management Setup (1 hour) 🔴
 
 ### Media Store
-- [ ] Create `src/store/mediaStore.ts`
-- [ ] Define MediaAsset interface
-- [ ] Add state:
-  - [ ] mediaLibrary: MediaAsset[]
-- [ ] Add actions:
-  - [ ] addMedia(asset: MediaAsset)
-  - [ ] removeMedia(id: string)
-  - [ ] getMediaById(id: string)
-- [ ] Add persist middleware (localStorage)
+- [x] Create `src/store/mediaStore.ts`
+- [x] Define MediaAsset interface
+- [x] Add state:
+  - [x] mediaLibrary: MediaAsset[]
+- [x] Add actions:
+  - [x] addMedia(asset: MediaAsset)
+  - [x] removeMedia(id: string)
+  - [x] getMediaById(id: string)
+- [x] Add persist middleware (localStorage)
 
 ### Timeline Store
-- [ ] Create `src/store/timelineStore.ts`
-- [ ] Define Track, TimelineClip interfaces
-- [ ] Add state:
-  - [ ] tracks: Track[]
-  - [ ] playheadPosition: number
-  - [ ] selectedClipIds: string[]
-  - [ ] zoom: number (default: 50 pixels per second)
-  - [ ] duration: number
-- [ ] Add actions:
-  - [ ] addTrack()
-  - [ ] removeTrack(trackId)
-  - [ ] addClip(trackId, clip)
-  - [ ] updateClip(clipId, updates)
-  - [ ] deleteClip(clipId)
-  - [ ] moveClip(clipId, newTrackId, newStartTime)
-  - [ ] setPlayhead(time)
-  - [ ] selectClips(clipIds)
-  - [ ] setZoom(zoom)
+- [x] Create `src/store/timelineStore.ts`
+- [x] Define Track, TimelineClip interfaces
+- [x] Add state:
+  - [x] tracks: Track[]
+  - [x] playheadPosition: number
+  - [x] selectedClipIds: string[]
+  - [x] zoom: number (default: 50 pixels per second)
+  - [x] duration: number
+- [x] Add actions:
+  - [x] addTrack()
+  - [x] removeTrack(trackId)
+  - [x] addClip(trackId, clip)
+  - [x] updateClip(clipId, updates)
+  - [x] deleteClip(clipId)
+  - [x] moveClip(clipId, newTrackId, newStartTime)
+  - [x] setPlayhead(time)
+  - [x] selectClips(clipIds)
+  - [x] setZoom(zoom)
 
 ### UI Store
-- [ ] Create `src/store/uiStore.ts`
-- [ ] Add state:
-  - [ ] isRecording: boolean
-  - [ ] isExporting: boolean
-  - [ ] exportProgress: number
-  - [ ] selectedPanel: 'media' | 'recording'
-- [ ] Add actions for UI state changes
+- [x] Create `src/store/uiStore.ts`
+- [x] Add state:
+  - [x] isRecording: boolean
+  - [x] isExporting: boolean
+  - [x] exportProgress: number
+  - [x] selectedPanel: 'media' | 'recording'
+- [x] Add actions for UI state changes
 
 **End of Phase 3 Checkpoint:**
 ✅ State stores are created and working
@@ -160,76 +160,79 @@ npm install -D @types/fluent-ffmpeg
 ## Phase 4: File Import System (3 hours) 🔴
 
 ### Electron IPC Setup
-- [ ] Create `electron/fileHandling.ts`
-- [ ] Implement IPC handler for file dialog:
+- [x] Create `electron/fileHandling.ts`
+- [x] Implement IPC handler for file dialog:
   ```typescript
   ipcMain.handle('dialog:openFile', async () => {
     // Use dialog.showOpenDialog
   })
   ```
-- [ ] Add preload script exposure
+- [x] Add preload script exposure
 - [ ] Test IPC communication
 
 ### Import Button
-- [ ] Create `ImportButton.tsx` component
-- [ ] Add click handler to trigger file dialog
-- [ ] Accept: video/*, audio/*, image/*
+- [x] Create `ImportButton.tsx` component
+- [x] Add click handler to trigger file dialog
+- [x] Accept: video/*, audio/*, image/*
 - [ ] Add dropdown arrow for future options
-- [ ] Style as prominent purple button
+- [x] Style as prominent purple button
 
 ### Drag & Drop
-- [ ] Add drag-over styling to sidebar
-- [ ] Implement drop handler
-- [ ] Prevent default browser behavior
-- [ ] Extract files from drop event
-- [ ] Validate file types (MP4, MOV, WebM, MP3, WAV, PNG, JPG)
+- [x] Add drag-over styling to sidebar
+- [x] Implement drop handler
+- [x] Prevent default browser behavior
+- [x] Extract files from drop event
+- [x] Validate file types (MP4, MOV, WebM, MP3, WAV, PNG, JPG)
 
 ### File Processing
-- [ ] Create `utils/fileHandling.ts`
-- [ ] Implement `processMediaFile(filePath)`:
-  - [ ] Read file metadata (duration, dimensions, size)
-  - [ ] Generate unique ID
-  - [ ] Determine media type
-  - [ ] Return MediaAsset object
-- [ ] Store only file PATH (not file contents)
+- [x] Create `utils/fileHandling.ts`
+- [x] Implement `processMediaFile(filePath)`:
+  - [x] Read file metadata (duration, dimensions, size)
+  - [x] Generate unique ID
+  - [x] Determine media type
+  - [x] Return MediaAsset object
+- [x] Store only file PATH (not file contents)
 
 ### Thumbnail Generation
-- [ ] Create `utils/thumbnailGenerator.ts`
-- [ ] For videos: Extract first frame
-  - [ ] Use HTML5 video element
-  - [ ] Draw to canvas
-  - [ ] Convert to data URL
-- [ ] For images: Use as-is (or resize)
-- [ ] For audio: Generate waveform visualization
-  - [ ] Use WaveSurfer.js
-  - [ ] Create small waveform image
+- [x] Create `utils/thumbnailGenerator.ts`
+- [x] For videos: Extract first frame
+  - [x] Use HTML5 video element
+  - [x] Draw to canvas
+  - [x] Convert to data URL
+- [x] For images: Use as-is (or resize)
+- [x] For audio: Generate waveform visualization
+  - [x] Simple placeholder waveform
+- [x] Get video duration
 
 ### Media Grid Display
-- [ ] Create `MediaGrid.tsx` component
-- [ ] Create `MediaItem.tsx` component
-- [ ] Display in 2-column grid
-- [ ] Show thumbnail
-- [ ] Show filename (truncated if long)
-- [ ] Show duration (for video/audio)
-- [ ] Show file size (optional)
-- [ ] Add delete button (⊗) on hover
-- [ ] Add click to select
-- [ ] Add double-click to add to timeline
+- [x] Create `MediaGrid.tsx` component
+- [x] Create `MediaItem.tsx` component
+- [x] Display in 2-column grid
+- [x] Show thumbnail
+- [x] Show filename (truncated if long)
+- [x] Show duration (for video/audio)
+- [x] Show file size (optional)
+  - [x] Add delete button (⊗) on hover
+- [x] Add click to select
+- [x] Add double-click to add to timeline (placeholder)
 
 ### Media Library Integration
-- [ ] Connect ImportButton to mediaStore
-- [ ] Connect MediaGrid to mediaStore
-- [ ] When file imported:
-  - [ ] Process file
-  - [ ] Generate thumbnail
-  - [ ] Add to mediaStore
-  - [ ] Display in grid
+- [x] Connect ImportButton to mediaStore
+- [x] Connect MediaGrid to mediaStore
+- [x] When file imported:
+  - [x] Process file
+  - [x] Generate thumbnail
+  - [x] Add to mediaStore
+  - [x] Display in grid
 
 **End of Phase 4 Checkpoint:**
 ✅ Can click "Import Media" and select files
 ✅ Can drag & drop files onto app
 ✅ Files appear in 2-column grid with thumbnails
 ✅ Shows duration for videos/audio
+✅ Thumbnails generated for video, audio, and images
+✅ Click to select media
+✅ Visual selection feedback with purple ring
 
 ---
 
