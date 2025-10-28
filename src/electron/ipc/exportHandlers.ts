@@ -23,6 +23,7 @@ interface ClipProcessing {
   clip: TimelineClip;
   media: MediaAsset;
   tempFile: string;
+  trackOrder: number;
 }
 
 export function setupExportHandlers() {
@@ -117,7 +118,7 @@ async function exportTimeline(job: ExportJob): Promise<void> {
 
   // Process each clip
   for (let i = 0; i < allClips.length; i++) {
-    const { clip, media } = allClips[i];
+    const { clip, media, trackOrder } = allClips[i];
     console.log(`\n🎬 Processing clip ${i + 1}/${allClips.length}:`);
     console.log(`   File: ${media.name}`);
     console.log(`   From: ${clip.startTime}s`);
@@ -125,7 +126,7 @@ async function exportTimeline(job: ExportJob): Promise<void> {
     console.log(`   Speed: ${clip.speed}x`);
     console.log(`   Volume: ${clip.volume}`);
     
-    const processedClip = await processClip(clip, media, resolution, tempDir);
+    const processedClip = await processClip(clip, media, resolution, tempDir, trackOrder);
     processedClips.push(processedClip);
     
     // Update progress (5% -> 50%)
@@ -224,7 +225,8 @@ async function buildSimpleComposition(
     command
       .videoCodec('libx264')
       .audioCodec('aac')
-      .outputOptions(['-preset', 'medium', '-crf', '23'])
+      .audioBitrate('192k')
+      .outputOptions(['-preset', 'slow', '-crf', '18'])
       .saveToFile(outputPath);
 
     command.on('start', (cmdLine) => {
@@ -265,8 +267,18 @@ async function buildMultiTrackComposition(
 ): Promise<void> {
   console.log(`\n🎬 BUILDING MULTI-TRACK COMPOSITION:`);
   
-  // Sort video clips by start time
-  videoClips.sort((a, b) => a.clip.startTime - b.clip.startTime);
+  // Sort video clips by track order first (higher track = on top), then by z-index, then by start time
+  videoClips.sort((a, b) => {
+    // Higher track order should be drawn last (on top)
+    if (a.trackOrder !== b.trackOrder) return a.trackOrder - b.trackOrder;
+    
+    // Then sort by z-index
+    const zA = a.clip.position?.zIndex ?? 0;
+    const zB = b.clip.position?.zIndex ?? 0;
+    if (zA !== zB) return zA - zB; // Lower z-index draws first (in background)
+    
+    return a.clip.startTime - b.clip.startTime;
+  });
   
   console.log(`\nVideo timeline:`);
   videoClips.forEach((c, idx) => {
@@ -290,15 +302,20 @@ async function buildMultiTrackComposition(
       .input(`color=black:s=${resolution.width}x${resolution.height}:r=30`)
       .inputOptions(['-f', 'lavfi', '-t', maxEndTime.toString()]);
 
-    // Add all video clips as inputs
+    // Add all video clips as inputs (these might have audio)
     videoClips.forEach(clip => {
       command.input(clip.tempFile);
     });
 
-    // Add all audio clips as inputs
+    // Add all audio-only clips as inputs
     audioClips.forEach(clip => {
       command.input(clip.tempFile);
     });
+    
+    console.log(`\n📥 Input structure:
+      Input 0: Black canvas
+      Video inputs: ${videoClips.length} (may have audio)
+      Audio-only inputs: ${audioClips.length}`);
 
     // Build complex filter
     const filterParts: string[] = [];
@@ -313,18 +330,93 @@ async function buildMultiTrackComposition(
       const startTime = clip.clip.startTime;
       const endTime = startTime + clip.clip.duration;
       
-      filterParts.push(
-        `${currentOutput}[${inputIndex}:v]overlay=enable='between(t,${startTime},${endTime})'[${outputLabel}]`
-      );
+      // Check if clip has position (is an overlay on canvas)
+      if (clip.clip.position) {
+        const pos = clip.clip.position;
+        
+        // Calculate absolute pixel positions (clips stored as 0-1 normalized)
+        const x = Math.round(pos.x * resolution.width);
+        const y = Math.round(pos.y * resolution.height);
+        const w = Math.round(pos.width * resolution.width);
+        const h = Math.round(pos.height * resolution.height);
+        
+        console.log(`   📐 Clip: ${clip.media.name}`);
+        console.log(`      Normalized: x=${pos.x.toFixed(4)}, y=${pos.y.toFixed(4)}, w=${pos.width.toFixed(4)}, h=${pos.height.toFixed(4)}`);
+        console.log(`      Absolute: x=${x}, y=${y}, w=${w}, h=${h} (out of ${resolution.width}x${resolution.height})`);
+        console.log(`      Rotation: ${pos.rotation?.toFixed(2) || 0}°`);
+        console.log(`      Track Order: ${clip.trackOrder}, Time: ${startTime.toFixed(2)}s`);
+        
+        // Build filter chain: scale → rotate (if needed) → overlay
+        const transformedLabel = `transformed${idx}`;
+        const scaleFilter = `scale=${w}:${h}`;
+        
+        // Calculate overlay position (may need adjustment for rotation)
+        let overlayX = x;
+        let overlayY = y;
+        
+        // Apply rotation if specified
+        if (pos.rotation && pos.rotation !== 0) {
+          // FFmpeg rotate filter: radians = degrees * PI / 180
+          const radians = (pos.rotation * Math.PI) / 180;
+          // Calculate output size to prevent clipping
+          // When rotating by θ, need diagonal size: diagonal = sqrt(w² + h²)
+          const diagonal = Math.sqrt(w * w + h * h);
+          const ow = Math.ceil(diagonal);
+          const oh = Math.ceil(diagonal);
+          const rotationFilter = `rotate='${radians}':ow=${ow}:oh=${oh}:fillcolor=black@0`;
+          
+          // Adjust overlay position to keep center in same place
+          // Original center: (x + w/2, y + h/2)
+          // After rotation, expanded image center is at (ow/2, oh/2)
+          // New overlay position: (x + w/2 - ow/2, y + h/2 - oh/2)
+          overlayX = Math.round(x + w / 2 - ow / 2);
+          overlayY = Math.round(y + h / 2 - oh / 2);
+          
+          console.log(`      🔄 Rotation adjustment: center (${x + w/2}, ${y + h/2}) → overlay (${overlayX}, ${overlayY})`);
+          
+          filterParts.push(
+            `[${inputIndex}:v]${scaleFilter},${rotationFilter}[${transformedLabel}]`
+          );
+        } else {
+          filterParts.push(
+            `[${inputIndex}:v]${scaleFilter}[${transformedLabel}]`
+          );
+        }
+        
+        // Overlay at position (adjusted for rotation if needed)
+        const overlayFilter = `overlay=${overlayX}:${overlayY}:enable='between(t,${startTime},${endTime})'`;
+        filterParts.push(
+          `${currentOutput}[${transformedLabel}]${overlayFilter}[${outputLabel}]`
+        );
+      } else {
+        // Full-screen clip (default behavior)
+        filterParts.push(
+          `${currentOutput}[${inputIndex}:v]overlay=enable='between(t,${startTime},${endTime})'[${outputLabel}]`
+        );
+      }
       
       currentOutput = `[${outputLabel}]`;
     });
 
-    // Mix all audio tracks
-    if (audioClips.length > 0) {
-      const audioInputs = videoClips.map((_, i) => `[${i + 1}:a]`).concat(
-        audioClips.map((_, i) => `[${videoClips.length + i + 1}:a]`)
-      );
+    // Extract and mix all audio tracks
+    const audioInputs: string[] = [];
+    
+    // Try to extract audio from video clips
+    videoClips.forEach((_, i) => {
+      const videoInputIndex = i + 1;
+      audioInputs.push(`[${videoInputIndex}:a]`);
+    });
+    
+    // Add audio from audio-only clips
+    audioClips.forEach((_, i) => {
+      const audioInputIndex = videoClips.length + i + 1;
+      audioInputs.push(`[${audioInputIndex}:a]`);
+    });
+    
+    // Mix all audio streams
+    // Note: This may fail if some video inputs don't have audio
+    // In that case, we'd need to use '-ignore_unknown' or handle missing streams
+    if (audioInputs.length > 0) {
       filterParts.push(
         `${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=longest[aout]`
       );
@@ -340,10 +432,12 @@ async function buildMultiTrackComposition(
         audioClips.length > 0 ? '-map' : '',
         audioClips.length > 0 ? '[aout]' : '',
         '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '23',
+        '-preset', 'slow', // Better quality (slower encoding)
+        '-crf', '18', // Lower = higher quality (18 is visually lossless, 23 is default)
         '-c:a', 'aac',
-        '-t', maxEndTime.toString()
+        '-b:a', '192k', // Higher audio bitrate for better quality
+        '-t', maxEndTime.toString(),
+        '-ignore_unknown' // Handle missing audio streams gracefully
       ].filter(Boolean))
       .saveToFile(outputPath);
 
@@ -378,7 +472,8 @@ async function processClip(
   clip: TimelineClip,
   media: MediaAsset,
   resolution: { width: number; height: number },
-  tempDir: string
+  tempDir: string,
+  trackOrder: number
 ): Promise<ClipProcessing> {
   console.log(`\n🎬 Processing: ${media.name}`);
   console.log(`   Type: ${media.type}`);
@@ -435,7 +530,7 @@ async function processClip(
       .format('mp4')
       .saveToFile(outputClip)
       .on('end', () => {
-        resolve({ clip, media, tempFile: outputClip });
+        resolve({ clip, media, tempFile: outputClip, trackOrder });
       })
       .on('error', reject);
   });

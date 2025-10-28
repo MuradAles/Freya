@@ -87,6 +87,15 @@ export default function Track({ track, containerWidth }: TrackProps) {
       volume: 1,
       fadeIn: 0,
       fadeOut: 0,
+      // Add default position to make clips interactive on canvas
+      position: {
+        x: 0.25,   // 25% from left
+        y: 0.25,   // 25% from top
+        width: 0.5,   // 50% of canvas width
+        height: 0.5,  // 50% of canvas height
+        rotation: 0,
+        zIndex: 0
+      }
     };
 
     addClip(track.id, newClip);
