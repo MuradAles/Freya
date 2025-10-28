@@ -31,4 +31,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Get media duration using ffmpeg
   getMediaDuration: (filePath: string) => ipcRenderer.invoke('file:getDuration', filePath),
+
+  // Export video
+  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string) => 
+    ipcRenderer.invoke('export:start', tracks, mediaAssets, outputPath, resolution),
+
+  // Listen for export progress
+  on: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.on(channel, (_, ...args) => callback(...args));
+  },
+
+  // Remove listener
+  off: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, callback as any);
+  },
 });

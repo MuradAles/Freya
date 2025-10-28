@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { setupFileHandlers } from './electron/ipc/fileHandlers';
+import { setupExportHandlers } from './electron/ipc/exportHandlers';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -44,6 +45,7 @@ const createWindow = () => {
 app.on('ready', () => {
   createWindow();
   setupFileHandlers();
+  setupExportHandlers();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

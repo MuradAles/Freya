@@ -426,72 +426,71 @@ npm install -D @types/fluent-ffmpeg
 ## Phase 9: FFmpeg Export Pipeline (4 hours) 🔴
 
 ### FFmpeg Setup
-- [ ] Create `electron/ffmpeg/export.ts`
-- [ ] Import fluent-ffmpeg
-- [ ] Set FFmpeg path from @ffmpeg-installer
-- [ ] Test FFmpeg availability
+- [x] Create `electron/ipc/exportHandlers.ts` (instead of separate file)
+- [x] Import fluent-ffmpeg
+- [x] Set FFmpeg path from @ffmpeg-installer
+- [x] Test FFmpeg availability
 
 ### Export Dialog
-- [ ] Create `ExportDialog.tsx`
-- [ ] Add resolution options:
-  - [ ] 720p (1280x720)
-  - [ ] 1080p (1920x1080) - default
-  - [ ] Source resolution
-- [ ] Add file picker for output path
-- [ ] Add [Cancel] and [Export] buttons
-- [ ] Show dialog when Export button clicked
+- [x] Create `ExportDialog.tsx`
+- [x] Add resolution options:
+  - [x] 720p (1280x720)
+  - [x] 1080p (1920x1080) - default
+  - [x] 4K (3840x2160)
+  - [x] Source resolution
+- [x] Add file picker for output path
+- [x] Add [Cancel] and [Export] buttons
+- [x] Show dialog when Export button clicked
 
 ### Simple Single-Clip Export
-- [ ] Implement basic export function:
-  ```typescript
-  async function exportSingleClip(clip, outputPath, resolution) {
-    // Use fluent-ffmpeg
-    // Input: clip source file
-    // Output: outputPath
-    // Scale to resolution
-    // Apply trim (if any)
-  }
-  ```
-- [ ] Test with one clip on timeline
-- [ ] Verify output plays correctly
+- [x] Implement basic export function with `exportTimeline`
+- [x] Test with one clip on timeline
+- [x] Verify output plays correctly
 
 ### Progress Dialog
-- [ ] Create `ProgressDialog.tsx`
-- [ ] Show during export
-- [ ] Display progress bar (0-100%)
-- [ ] Show "Exporting..." text
-- [ ] Add [Cancel] button
-- [ ] Close automatically when complete
+- [x] Create `ProgressDialog.tsx`
+- [x] Show during export
+- [x] Display progress bar (0-100%)
+- [x] Show "Exporting..." text
+- [ ] Add [Cancel] button (future enhancement)
+- [x] Close automatically when complete
 
 ### Export IPC Communication
-- [ ] Add IPC handler in main process:
+- [x] Add IPC handler in main process (`setupExportHandlers`)
   ```typescript
-  ipcMain.handle('export:start', async (event, data) => {
+  ipcMain.handle('export:start', async (event, tracks, mediaAssets, outputPath, resolution) => {
     // Run FFmpeg export
     // Send progress updates
   })
   ```
-- [ ] Send progress updates to renderer
-- [ ] Handle cancellation
-- [ ] Handle errors gracefully
+- [x] Send progress updates to renderer via `event.sender.send('export:progress', progress)`
+- [ ] Handle cancellation (future enhancement)
+- [x] Handle errors gracefully
 
 ### Multi-Clip Concatenation
-- [ ] Generate file list for FFmpeg concat
-- [ ] For each clip on timeline:
-  - [ ] Apply trim if needed
-  - [ ] Add to concat list
-- [ ] Use FFmpeg concat demuxer:
-  ```bash
-  ffmpeg -f concat -safe 0 -i filelist.txt -c copy output.mp4
-  ```
-- [ ] Test with 2-3 clips in sequence
+- [x] Generate file list for FFmpeg concat
+- [x] For each clip on timeline:
+  - [x] Apply trim if needed
+  - [x] Add to concat list
+- [x] Use FFmpeg concat demuxer
+- [x] Test with 2-3 clips in sequence
+- [x] Sort all clips by start time for proper sequence
+- [x] Add audio mixing support
+
+### Multi-Track Export Support
+- [x] Detect overlapping clips automatically
+- [x] Use simple concatenation for non-overlapping clips with audio mixing
+- [x] Use multi-track overlay composition for overlapping clips
+- [x] Implement helper functions: `detectOverlaps`, `buildSimpleComposition`, `buildMultiTrackComposition`
+- [x] Add comprehensive logging for debugging
+- [x] Support audio-only clips in export
 
 ### Export Edge Cases
-- [ ] Handle empty timeline (show error)
-- [ ] Handle overlapping clips (not allowed in MVP)
-- [ ] Handle different resolutions (scale all)
-- [ ] Handle audio-only clips
-- [ ] Handle image clips (treat as video with duration)
+- [x] Handle empty timeline (show error)
+- [x] Handle overlapping clips (intelligent auto-detect)
+- [x] Handle different resolutions (scale all to target)
+- [x] Handle audio-only clips
+- [ ] Handle image clips (treat as video with duration) - TODO
 
 **End of Phase 9 Checkpoint:**
 ✅ Can click Export button

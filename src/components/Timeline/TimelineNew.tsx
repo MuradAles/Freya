@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Film, Plus, Minus } from 'lucide-react';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useMediaStore } from '../../store/mediaStore';
+import ExportDialog, { type ExportSettings } from '../Dialogs/ExportDialog';
+import ProgressDialog from '../Dialogs/ProgressDialog';
 import type { TimelineClip } from '../../types/timeline';
 
 const TRACK_HEIGHT = 80;
@@ -10,7 +12,30 @@ const RULER_HEIGHT = 40;
 
 export default function TimelineNew() {
   const { tracks, zoom, setZoom, addTrack, playheadPosition, setPlayhead, selectedClipIds, selectClips, addClip, updateClip, deleteClip, setUserSeeking } = useTimelineStore();
-  const { getMediaById } = useMediaStore();
+  const { getMediaById, mediaLibrary } = useMediaStore();
+  
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+
+  // Listen for export progress updates
+  useEffect(() => {
+    const handleProgress = (progress: number) => {
+      console.log('📊 Progress update from main process:', progress);
+      setExportProgress(progress);
+    };
+
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI && electronAPI.on) {
+      electronAPI.on('export:progress', handleProgress);
+    }
+
+    return () => {
+      if (electronAPI && electronAPI.off) {
+        electronAPI.off('export:progress', handleProgress);
+      }
+    };
+  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<{
@@ -240,7 +265,10 @@ export default function TimelineNew() {
             <Plus className="w-4 h-4 inline mr-1" />
             Track
           </button>
-          <button className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium">
+          <button 
+            onClick={() => setShowExportDialog(true)}
+            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium"
+          >
             Export
           </button>
         </div>
@@ -428,6 +456,38 @@ export default function TimelineNew() {
           </div>
         </div>
       </div>
+
+      {/* Export Dialog */}
+      <ExportDialog
+        isOpen={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        onExport={async (settings: ExportSettings) => {
+          setShowExportDialog(false);
+          setShowProgressDialog(true);
+          setExportProgress(0);
+
+          try {
+            const electronAPI = (window as any).electronAPI;
+            await electronAPI.exportVideo(tracks, mediaLibrary, settings.outputPath, settings.resolution);
+            
+            setShowProgressDialog(false);
+            setExportProgress(0);
+            alert('Export complete!');
+          } catch (error) {
+            console.error('Export failed:', error);
+            setShowProgressDialog(false);
+            setExportProgress(0);
+            alert('Export failed. Please try again.');
+          }
+        }}
+      />
+
+      {/* Progress Dialog */}
+      <ProgressDialog
+        isOpen={showProgressDialog}
+        progress={exportProgress}
+        message="Exporting video..."
+      />
     </div>
   );
 }
