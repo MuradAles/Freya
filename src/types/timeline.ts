@@ -17,10 +17,11 @@ export interface TimelineClip {
   
   // Positioning (for overlays/images)
   position?: {
-    x: number;                   // Pixels from left
-    y: number;                   // Pixels from top
-    width: number;
-    height: number;
+    x: number;                   // Pixels from left (0-1 as percentage)
+    y: number;                   // Pixels from top (0-1 as percentage)
+    width: number;               // Width (0-1 as percentage of canvas)
+    height: number;              // Height (0-1 as percentage of canvas)
+    rotation: number;            // Rotation in degrees
     zIndex: number;              // Layer order
   };
 }

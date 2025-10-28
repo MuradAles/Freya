@@ -1,7 +1,7 @@
 import React from 'react';
 import Sidebar from './components/Sidebar/Sidebar';
 import PreviewCanvas from './components/Preview/PreviewCanvas';
-import Timeline from './components/Timeline/Timeline';
+import TimelineNew from './components/Timeline/TimelineNew';
 import PropertiesPanel from './components/Properties/PropertiesPanel';
 
 function App() {
@@ -18,10 +18,10 @@ function App() {
         <div className="flex-1 min-h-0">
           <PreviewCanvas />
         </div>
-        
+
         {/* Timeline - 250px fixed height */}
         <div className="h-64 flex-shrink-0">
-          <Timeline />
+          <TimelineNew />
         </div>
       </div>
 

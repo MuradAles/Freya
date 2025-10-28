@@ -135,11 +135,27 @@ export default function MediaItem({ media }: MediaItemProps) {
     }
   }, [isHovering, media.type]);
   
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('mediaId', media.id);
+    e.dataTransfer.effectAllowed = 'copy';
+
+    // Create a custom drag image
+    if (e.currentTarget) {
+      const dragImage = e.currentTarget.cloneNode(true) as HTMLElement;
+      dragImage.style.opacity = '0.7';
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, 50, 50);
+      setTimeout(() => document.body.removeChild(dragImage), 0);
+    }
+  };
+
   return (
-    <div 
+    <div
+      draggable
+      onDragStart={handleDragStart}
       className={`group relative rounded-lg overflow-hidden cursor-pointer transition-colors ${
-        isSelected 
-          ? 'bg-purple-600/20 ring-2 ring-purple-400' 
+        isSelected
+          ? 'bg-purple-600/20 ring-2 ring-purple-400'
           : 'bg-transparent hover:bg-gray-600/20'
       }`}
       onClick={handleClick}
@@ -165,7 +181,7 @@ export default function MediaItem({ media }: MediaItemProps) {
           clearTimeout(audioTimeout);
           setAudioTimeout(null);
         }
-        
+
         // Stop audio playback when mouse leaves
         if (audioRef.current) {
           audioRef.current.pause();

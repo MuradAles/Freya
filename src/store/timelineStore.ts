@@ -9,6 +9,7 @@ interface TimelineStore {
   selectedClipIds: string[];
   zoom: number;
   duration: number;
+  isUserSeeking: boolean; // Track if user is manually scrubbing
   
   // Actions
   addTrack: () => void;
@@ -18,6 +19,7 @@ interface TimelineStore {
   deleteClip: (clipId: string) => void;
   moveClip: (clipId: string, newTrackId: string, newStartTime: number) => void;
   setPlayhead: (time: number) => void;
+  setUserSeeking: (isSeeking: boolean) => void;
   selectClips: (clipIds: string[]) => void;
   setZoom: (zoom: number) => void;
   splitClip: (clipId: string, splitTime: number) => void;
@@ -30,13 +32,14 @@ function generateId(): string {
 
 export const useTimelineStore = create<TimelineStore>()(
   persist(
-    (set, get) => ({
+    (set, get): TimelineStore => ({
       // Initial state
       tracks: [],
       playheadPosition: 0,
       selectedClipIds: [],
-      zoom: 50, // pixels per second
+      zoom: 20, // pixels per second (default: 20px/s allows viewing ~3 min in 3600px)
       duration: 0,
+      isUserSeeking: false,
       
       addTrack: () => set((state) => {
         const newTrack: Track = {
@@ -119,9 +122,11 @@ export const useTimelineStore = create<TimelineStore>()(
       
       setPlayhead: (time) => set({ playheadPosition: Math.max(0, time) }),
       
+      setUserSeeking: (isSeeking) => set({ isUserSeeking: isSeeking }),
+      
       selectClips: (clipIds) => set({ selectedClipIds: clipIds }),
       
-      setZoom: (zoom) => set({ zoom: Math.max(10, Math.min(500, zoom)) }),
+      setZoom: (zoom) => set({ zoom: Math.max(1, Math.min(200, zoom)) }), // 1px/s (1 hour in 3600px) to 200px/s (max zoom)
       
       splitClip: (clipId, splitTime) => {
         const { tracks } = get();
