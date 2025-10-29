@@ -4,11 +4,26 @@ import started from 'electron-squirrel-startup';
 import { setupFileHandlers } from './electron/ipc/fileHandlers';
 import { setupExportHandlers } from './electron/ipc/exportHandlers';
 import { setupRecordingHandlers } from './electron/ipc/recordingHandlers';
+import { initMain } from 'electron-audio-loopback';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
+
+// Initialize electron-audio-loopback for automatic system audio capture
+// This must be called before app.whenReady()
+initMain();
+console.log('✅ electron-audio-loopback initialized');
+
+// Enable system audio capture on Windows
+// These flags enable loopback audio capture (system sounds)
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
+
+// Disable hardware media key handling to prevent conflicts
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 
 const createWindow = () => {
   // Check screen recording permissions (macOS)
@@ -68,12 +83,21 @@ const createWindow = () => {
         thumbnailSize: { width: 200, height: 200 }
       });
       
-      // For now, grant access to the first screen
-      // Later we can add UI to let user select specific source
+      console.log('📹 Available sources:', sources.length);
+      
+      // Grant access to the first screen by default
+      // The actual source selection is done in the UI through the recording dialog
       const screenSource = sources.find(s => s.id.startsWith('screen:'));
       if (screenSource) {
         console.log('✅ Granting access to:', screenSource.name);
-        callback({ video: screenSource });
+        // Try to enable system audio capture
+        // Note: This may not work on all Windows systems without "Stereo Mix" or similar enabled
+        try {
+          callback({ video: screenSource, audio: 'loopback' as any });
+        } catch (err) {
+          console.warn('⚠️  Audio loopback not supported, granting video only');
+          callback({ video: screenSource });
+        }
       } else {
         console.error('❌ No screen sources available');
         callback({});
@@ -82,7 +106,7 @@ const createWindow = () => {
       console.error('❌ Error handling display media request:', error);
       callback({});
     }
-  }, { useSystemPicker: false }); // Don't use system picker - we want programmatic control
+  });
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

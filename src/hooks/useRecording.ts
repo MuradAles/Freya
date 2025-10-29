@@ -6,14 +6,15 @@ export interface RecordingConfig {
   screenType?: 'full' | 'window' | 'custom';
   windowId?: string;
   customArea?: { x: number; y: number; width: number; height: number; screenId: string };
-  
+
   // Camera recording
   cameraId?: string;
   cameraPosition?: string;
-  
+
   // Audio recording
   microphoneId?: string;
   includeMicrophone?: boolean;
+  includeSystemAudio?: boolean; // NEW: Control system audio separately
 }
 
 export interface UseRecordingReturn {
@@ -67,13 +68,13 @@ export function useRecording(): UseRecordingReturn {
       setRecordingStream(stream);
       console.log('✅ recordingStream state set');
 
-      // Create MediaRecorder with H.264 codec for better MP4 conversion
-      // Try different codec options in order of preference
+      // Use VP9 for best compression (smaller files) or VP8 for speed
+      // H.264 provides excellent compression but may not be available in all browsers
       const codecOptions = [
-        'video/webm;codecs=h264',           // Best for MP4 conversion
-        'video/webm;codecs=vp9,opus',       // VP9 with audio
-        'video/webm;codecs=vp8,opus',       // VP8 with audio
-        'video/webm',                        // Default WebM
+        'video/webm;codecs=h264,opus',      // Best compression (smallest files)
+        'video/webm;codecs=vp9,opus',       // Good compression
+        'video/webm;codecs=vp8,opus',       // Fast but larger files
+        'video/webm',                        // Default WebM (VP8)
       ];
 
       let selectedMimeType = 'video/webm';
@@ -87,11 +88,24 @@ export function useRecording(): UseRecordingReturn {
 
       const options: MediaRecorderOptions = {
         mimeType: selectedMimeType,
-        videoBitsPerSecond: 2500000, // 2.5 Mbps
+        videoBitsPerSecond: 1500000,  // 1.5 Mbps (reduced from 2 Mbps for smaller files)
+        audioBitsPerSecond: 128000,   // 128 kbps audio (explicit setting)
+        bitsPerSecond: 1628000        // Total: 1.5M video + 128k audio
       };
 
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
+
+      // Log what MediaRecorder will actually record
+      console.log('\n🎬 MEDIARECORDER INITIALIZATION:');
+      console.log('   Audio tracks being recorded:', stream.getAudioTracks().length);
+      stream.getAudioTracks().forEach((track: MediaStreamTrack, index) => {
+        console.log(`   ${index + 1}. ${track.kind}: ${track.label}`);
+        console.log(`      - Enabled: ${track.enabled}`);
+        console.log(`      - Muted: ${track.muted}`);
+        console.log(`      - ReadyState: ${track.readyState}`);
+      });
+      console.log('');
 
       // Handle data available event
       recorder.ondataavailable = (event) => {
@@ -110,8 +124,9 @@ export function useRecording(): UseRecordingReturn {
         console.log('MediaRecorder stopped');
       };
 
-      // Start recording
-      recorder.start(1000); // Collect chunks every second
+      // Start recording with smaller chunks for better compression
+      // Smaller chunks (100ms) allow MediaRecorder to compress more efficiently
+      recorder.start(100); // Collect chunks every 100ms (was 1000ms)
       setIsRecording(true);
       setRecording(true);
 
@@ -273,10 +288,49 @@ async function createRecordingStream(config: RecordingConfig): Promise<MediaStre
     streams.push(cameraStream);
   }
 
+  // System audio (loopback) - Use electron-audio-loopback via IPC
+  // Only enable if user wants system audio
+  if (config.includeSystemAudio !== false) { // Default to true if not specified
+    try {
+      console.log('🔊 Attempting to capture system audio via electron-audio-loopback...');
+
+      // Enable loopback audio via IPC
+      if (window.electronAPI?.enableLoopbackAudio) {
+        await window.electronAPI.enableLoopbackAudio();
+        console.log('✅ Loopback audio enabled via IPC');
+
+        // Now getDisplayMedia should include system audio automatically
+        // electron-audio-loopback intercepts the call and adds system audio
+      } else {
+        console.warn('⚠️  electronAPI.enableLoopbackAudio not available');
+      }
+    } catch (err) {
+      console.warn('⚠️  Failed to enable system audio loopback:', err);
+      console.warn('   System audio will not be included in recording');
+    }
+  } else {
+    console.log('🔇 System audio capture disabled by user');
+    // Disable loopback audio
+    if (window.electronAPI?.disableLoopbackAudio) {
+      await window.electronAPI.disableLoopbackAudio();
+    }
+  }
+
   // Microphone recording
   if (config.includeMicrophone && config.microphoneId) {
-    const micStream = await createMicrophoneStream(config.microphoneId);
-    streams.push(micStream);
+    console.log('🎤 Attempting to capture microphone:', config.microphoneId);
+    try {
+      const micStream = await createMicrophoneStream(config.microphoneId);
+      streams.push(micStream);
+      console.log('✅ Microphone stream created successfully');
+      console.log('   Audio tracks:', micStream.getAudioTracks().length);
+      micStream.getAudioTracks().forEach((track: MediaStreamTrack) => {
+        console.log(`   - ${track.label} (${track.enabled ? 'enabled' : 'disabled'})`);
+      });
+    } catch (err) {
+      console.error('❌ Failed to capture microphone:', err);
+      throw new Error(`Microphone capture failed: ${err}`);
+    }
   }
 
   // If no streams, throw error
@@ -284,14 +338,80 @@ async function createRecordingStream(config: RecordingConfig): Promise<MediaStre
     throw new Error('No recording sources selected');
   }
 
-  // Combine streams (merge tracks from all streams)
-  const combinedStream = new MediaStream();
-  
-  streams.forEach(stream => {
-    stream.getTracks().forEach(track => {
-      combinedStream.addTrack(track);
+  // Collect all audio and video tracks
+  const allAudioTracks: MediaStreamTrack[] = [];
+  const allVideoTracks: MediaStreamTrack[] = [];
+
+  console.log('\n📊 COLLECTING TRACKS FROM STREAMS:');
+  console.log(`   Total streams: ${streams.length}`);
+
+  streams.forEach((stream, index) => {
+    console.log(`\n   Stream ${index + 1}:`);
+    const videoTracks = stream.getVideoTracks();
+    const audioTracks = stream.getAudioTracks();
+    console.log(`     - Video tracks: ${videoTracks.length}`);
+    console.log(`     - Audio tracks: ${audioTracks.length}`);
+
+    videoTracks.forEach(track => {
+      allVideoTracks.push(track);
+      console.log(`     ✓ Collected video track: ${track.label}`);
+    });
+
+    audioTracks.forEach(track => {
+      allAudioTracks.push(track);
+      console.log(`     ✓ Collected audio track: ${track.label}`);
     });
   });
+
+  console.log(`\n🎵 TOTAL AUDIO TRACKS COLLECTED: ${allAudioTracks.length}`);
+  console.log(`📹 TOTAL VIDEO TRACKS COLLECTED: ${allVideoTracks.length}`);
+
+  // Mix multiple audio tracks using Web Audio API
+  const combinedStream = new MediaStream();
+
+  // Add all video tracks (these work fine with multiple tracks)
+  allVideoTracks.forEach(track => {
+    combinedStream.addTrack(track);
+  });
+
+  // Mix audio tracks if we have more than one
+  if (allAudioTracks.length > 1) {
+    console.log('\n🔊 MIXING MULTIPLE AUDIO TRACKS using Web Audio API...');
+    try {
+      const audioContext = new AudioContext();
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Connect each audio track to the destination (this mixes them)
+      allAudioTracks.forEach((track, index) => {
+        const source = audioContext.createMediaStreamSource(new MediaStream([track]));
+        source.connect(destination);
+        console.log(`   ✓ Connected audio track ${index + 1}: ${track.label}`);
+      });
+
+      // Get the mixed audio track
+      const mixedAudioTrack = destination.stream.getAudioTracks()[0];
+      combinedStream.addTrack(mixedAudioTrack);
+      console.log('✅ Audio tracks mixed successfully into single track');
+    } catch (err) {
+      console.error('❌ Failed to mix audio tracks:', err);
+      console.warn('⚠️  Falling back to first audio track only');
+      // Fallback: just use the first audio track
+      if (allAudioTracks.length > 0) {
+        combinedStream.addTrack(allAudioTracks[0]);
+      }
+    }
+  } else if (allAudioTracks.length === 1) {
+    // Only one audio track, add it directly
+    console.log('\n🔊 Single audio track - adding directly');
+    combinedStream.addTrack(allAudioTracks[0]);
+  } else {
+    console.log('\n🔇 No audio tracks to add');
+  }
+
+  console.log(`\n✅ FINAL COMBINED STREAM:`);
+  console.log(`   Video tracks: ${combinedStream.getVideoTracks().length}`);
+  console.log(`   Audio tracks: ${combinedStream.getAudioTracks().length}`);
+  console.log('');
 
   return combinedStream;
 }
@@ -301,19 +421,49 @@ async function createRecordingStream(config: RecordingConfig): Promise<MediaStre
  */
 async function createScreenStream(config: RecordingConfig): Promise<MediaStream> {
   let stream: MediaStream;
+  const requestAudio = config.includeSystemAudio !== false; // Default to true
 
   try {
-    console.log('📹 Creating screen stream with getDisplayMedia...');
-    
-    // Use the modern getDisplayMedia API which is properly handled by our session handler in main.ts
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        displaySurface: 'screen' as any,
-      },
-      audio: false // Audio is handled separately if needed
-    });
-    
-    console.log('✅ Screen stream created via getDisplayMedia');
+    // If recording a specific window, use getUserMedia with Electron's chromeMediaSource
+    if (config.screenType === 'window' && config.windowId) {
+      console.log('📹 Creating window stream for:', config.windowId);
+      console.log('   System audio:', requestAudio ? 'ENABLED' : 'DISABLED');
+
+      // Capture window with optional audio request
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: config.windowId,
+            frameRate: 60, // Record at 60 fps for smooth playback
+          }
+        } as any,
+        audio: requestAudio ? {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: config.windowId,
+          }
+        } as any : false
+      });
+      console.log(`✅ Window stream created (system audio: ${requestAudio ? 'ON' : 'OFF'})`);
+    } else {
+      // Full screen recording
+      console.log('📹 Creating screen stream with getDisplayMedia...');
+      console.log('   System audio:', requestAudio ? 'ENABLED' : 'DISABLED');
+
+      // Request audio only if user wants system audio
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          displaySurface: 'screen' as any,
+          frameRate: 60, // Record at 60 fps for smooth playback
+        },
+        audio: requestAudio // Only request audio if system audio is enabled
+      } as any);
+      console.log(`✅ Screen stream created (system audio: ${requestAudio ? 'ON' : 'OFF'})`);
+    }
 
     // Log stream info
     const videoTrack = stream.getVideoTracks()[0];
@@ -342,6 +492,13 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
     } else {
       console.warn('⚠️  Stream created but has no video tracks!');
     }
+
+    // Log audio tracks (system audio)
+    const audioTracks = stream.getAudioTracks();
+    console.log(`🎵 System audio tracks: ${audioTracks.length}`);
+    audioTracks.forEach((track, index) => {
+      console.log(`   Track ${index + 1}: ${track.label} (${track.enabled ? 'enabled' : 'disabled'})`);
+    });
 
     return stream;
   } catch (error) {

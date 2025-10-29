@@ -10,6 +10,19 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Copy FFmpeg and FFprobe binaries to resources folder
+    extraResources: [
+      {
+        from: 'node_modules/@ffmpeg-installer/win32-x64',
+        to: 'resources',
+        filter: ['ffmpeg.exe']
+      },
+      {
+        from: 'node_modules/@ffprobe-installer/win32-x64',
+        to: 'resources',
+        filter: ['ffprobe.exe']
+      },
+    ],
   },
   rebuildConfig: {},
   makers: [

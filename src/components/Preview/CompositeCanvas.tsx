@@ -58,7 +58,7 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
   };
 
   // Use rendering hook
-  const { fpsDisplayRef } = useCanvasRendering({
+  useCanvasRendering({
     canvasRef,
           playheadPosition,
           isPlaying,
@@ -90,14 +90,6 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
 
   return (
     <div className="relative w-full h-full">
-      {/* FPS Counter - Top Right */}
-      <div
-        ref={fpsDisplayRef}
-        className="absolute top-2 right-2 z-10 bg-gray-900/90 text-green-400 font-mono text-sm px-3 py-1.5 rounded border border-green-500/30"
-      >
-        0 FPS
-      </div>
-
       {/* Controls */}
       <CanvasControls
         canvasZoom={canvasZoom}

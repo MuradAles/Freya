@@ -63,11 +63,6 @@ export const useCanvasRendering = ({
     showGrid: boolean;
   } | null>(null);
 
-  // FPS tracking
-  const fpsRef = useRef<number>(0);
-  const fpsDisplayRef = useRef<HTMLDivElement>(null);
-  const fpsFrameTimesRef = useRef<number[]>([]);
-  const lastFpsUpdateRef = useRef<number>(Date.now());
 
   // Animation frame ref
   const animationFrameRef = useRef<number | undefined>(undefined);
@@ -258,29 +253,7 @@ export const useCanvasRendering = ({
       const currentShowGrid = showGridRef.current;
       const currentCanvasColor = canvasColorRef.current;
 
-      // FPS calculation
       const now = performance.now();
-      fpsFrameTimesRef.current.push(now);
-
-      if (fpsFrameTimesRef.current.length > 60) {
-        fpsFrameTimesRef.current.shift();
-      }
-
-      // Update FPS display every 500ms
-      if (now - lastFpsUpdateRef.current > 500) {
-        if (fpsFrameTimesRef.current.length > 1) {
-          const frameCount = fpsFrameTimesRef.current.length - 1;
-          const timeDiff = fpsFrameTimesRef.current[fpsFrameTimesRef.current.length - 1] - fpsFrameTimesRef.current[0];
-          const currentFps = Math.round((frameCount / timeDiff) * 1000);
-          fpsRef.current = currentFps;
-
-          if (fpsDisplayRef.current) {
-            fpsDisplayRef.current.textContent = `${currentFps} FPS`;
-          }
-        }
-        lastFpsUpdateRef.current = now;
-      }
-
       const clipsAtPlayhead = getClipsAtPlayhead();
 
       // Check if any videos are ready to be drawn
@@ -612,5 +585,5 @@ export const useCanvasRendering = ({
     };
   }, []);
 
-  return { fpsDisplayRef };
+  return {};
 };

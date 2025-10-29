@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Video, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { useMediaStore } from '../../store/mediaStore';
 import { processMediaFile } from '../../utils/fileHandling';
 import MediaGrid from './MediaGrid';
@@ -89,12 +89,6 @@ export default function Sidebar() {
     }
   };
 
-  const isValidFileType = (filename: string): boolean => {
-    const ext = filename.toLowerCase().split('.').pop() || '';
-    const validExts = ['mp4', 'mov', 'webm', 'mp3', 'wav', 'png', 'jpg', 'jpeg'];
-    return validExts.includes(ext);
-  };
-
   return (
     <div 
       className={`w-full h-full bg-gray-800 flex flex-col transition-colors relative ${isDragging ? 'bg-purple-900/50' : ''}`}
@@ -104,34 +98,7 @@ export default function Sidebar() {
     >
       {/* Header */}
       <div className="p-4 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <Video className="w-6 h-6 text-purple-500" />
-          <h1 className="text-xl font-bold text-white">ClipForge</h1>
-        </div>
-      </div>
-
-      {/* Recording Section */}
-      <div className="p-4 border-b border-gray-700">
-        <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">
-          Recording
-        </h2>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white">
-            <input type="checkbox" className="rounded" />
-            <span>Screen</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white">
-            <input type="checkbox" className="rounded" />
-            <span>Camera</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white">
-            <input type="checkbox" className="rounded" />
-            <span>Microphone</span>
-          </label>
-        </div>
-        <button className="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded font-medium text-sm transition-colors">
-          Start Recording
-        </button>
+        <h1 className="text-xl font-bold text-white">Media Library</h1>
       </div>
 
       {/* Import Section */}
@@ -145,13 +112,8 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Media Library */}
+      {/* Media Grid */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="px-4 pt-4 pb-2">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-            Media Library
-          </h2>
-        </div>
         <MediaGrid />
       </div>
       

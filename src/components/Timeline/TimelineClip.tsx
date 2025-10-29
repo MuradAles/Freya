@@ -112,6 +112,7 @@ export default function TimelineClip({ clip, trackId }: TimelineClipProps) {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).classList.contains('trim-handle')) return;
+    e.preventDefault(); // Prevent text selection
     e.stopPropagation();
     setIsDragging(true);
     setDragStartX(e.clientX);
@@ -119,6 +120,7 @@ export default function TimelineClip({ clip, trackId }: TimelineClipProps) {
   };
 
   const handleLeftTrimMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent text selection
     e.stopPropagation();
     setIsResizingLeft(true);
     setDragStartX(e.clientX);
@@ -126,6 +128,7 @@ export default function TimelineClip({ clip, trackId }: TimelineClipProps) {
   };
 
   const handleRightTrimMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent text selection
     e.stopPropagation();
     setIsResizingRight(true);
     setDragStartX(e.clientX);
@@ -135,6 +138,7 @@ export default function TimelineClip({ clip, trackId }: TimelineClipProps) {
     if (!isDragging && !isResizingLeft && !isResizingRight) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault(); // Prevent text selection during drag/trim
       const deltaX = e.clientX - dragStartX;
       const deltaTime = deltaX / zoom;
 

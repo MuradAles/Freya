@@ -1,12 +1,25 @@
-import { ipcMain, desktopCapturer, dialog } from 'electron';
+import { ipcMain, desktopCapturer, dialog, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+
+// Determine FFmpeg path based on environment
+function getFfmpegPath(): string {
+  if (app.isPackaged) {
+    // In production, binaries are in resources folder
+    const resourcesPath = path.join(process.resourcesPath || app.getAppPath(), 'resources');
+    return path.join(resourcesPath, 'ffmpeg.exe');
+  } else {
+    // In development, use the installer path with correct require pattern
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+    return ffmpegPath;
+  }
+}
 
 export function setupRecordingHandlers() {
-  // Configure FFmpeg path using @ffmpeg-installer
-  const ffmpegPath = ffmpegInstaller.path;
+  // Configure FFmpeg path
+  const ffmpegPath = getFfmpegPath();
   ffmpeg.setFfmpegPath(ffmpegPath);
   console.log('✅ FFmpeg configured at:', ffmpegPath);
   // Get available screen/window sources for recording
@@ -78,24 +91,48 @@ export function setupRecordingHandlers() {
     }
   });
 
-  // Convert WebM recording to MP4
-  ipcMain.handle('recording:convertToMP4', async (_, webmPath: string, mp4Path: string) => {
+  // Convert WebM recording to MP4 with quality and frame rate options
+  ipcMain.handle('recording:convertToMP4', async (event, webmPath: string, mp4Path: string, quality: 'high' | 'medium' | 'low' = 'medium', targetFrameRate: number = 60) => {
     try {
       console.log('🎬 Converting WebM to MP4...');
       console.log('   Source:', webmPath);
       console.log('   Target:', mp4Path);
+      console.log('   Quality:', quality);
+      console.log('   Frame Rate:', targetFrameRate);
+
+      // Map quality to CRF values (lower = better quality, larger file)
+      const crfMap = {
+        high: '18',    // Visually lossless, ~5-10 MB/min
+        medium: '23',  // High quality, ~2-5 MB/min (default)
+        low: '28'      // Good quality, ~0.5-2 MB/min (smallest)
+      };
+      const crf = crfMap[quality];
 
       return new Promise((resolve) => {
         ffmpeg(webmPath)
           .output(mp4Path)
           .videoCodec('libx264')
           .audioCodec('aac')
-          .outputOptions(['-preset', 'fast', '-crf', '23'])
+          .outputOptions([
+            '-preset', 'fast',       // Fast encoding with good compression
+            '-crf', crf,              // Quality setting based on user choice
+            '-r', targetFrameRate.toString(), // Set target frame rate
+            '-movflags', '+faststart', // Web-optimized MP4
+            '-threads', '0'           // Use all CPU cores
+          ])
           .on('start', (cmdLine) => {
             console.log('🔥 FFmpeg command:', cmdLine);
           })
+          .on('progress', (progress) => {
+            // Send progress to renderer
+            if (progress.percent) {
+              event.sender.send('recording:compressionProgress', progress.percent);
+              console.log(`⏳ Compression progress: ${progress.percent.toFixed(1)}%`);
+            }
+          })
           .on('end', () => {
             console.log('✅ WebM → MP4 conversion complete');
+            event.sender.send('recording:compressionProgress', 100);
             resolve({ success: true });
           })
           .on('error', (err) => {

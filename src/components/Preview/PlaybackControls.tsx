@@ -38,42 +38,44 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 rounded-lg">
-      {/* Left: Frame back */}
-      <button
-        onClick={onFrameBack}
-        className="p-2 hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={currentTime === 0}
-      >
-        <SkipBack className="w-5 h-5 text-white" />
-      </button>
+    <div className="flex items-center justify-center px-2 py-1 bg-gray-800 rounded">
+      <div className="flex items-center gap-1">
+        {/* Left: Frame back */}
+        <button
+          onClick={onFrameBack}
+          className="p-1 hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={currentTime === 0}
+        >
+          <SkipBack className="w-4 h-4 text-white" />
+        </button>
 
-      {/* Center: Play/Pause */}
-      <button
-        onClick={handlePlayPause}
-        className="p-2 hover:bg-gray-700 rounded transition-colors"
-      >
-        {isPlaying ? (
-          <Pause className="w-6 h-6 text-white" />
-        ) : (
-          <Play className="w-6 h-6 text-white" />
-        )}
-      </button>
+        {/* Center: Play/Pause */}
+        <button
+          onClick={handlePlayPause}
+          className="p-1 hover:bg-gray-700 rounded transition-colors"
+        >
+          {isPlaying ? (
+            <Pause className="w-4 h-4 text-white" />
+          ) : (
+            <Play className="w-4 h-4 text-white" />
+          )}
+        </button>
 
-      {/* Right: Frame forward */}
-      <button
-        onClick={onFrameForward}
-        className="p-2 hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={currentTime >= duration}
-      >
-        <SkipForward className="w-5 h-5 text-white" />
-      </button>
+        {/* Right: Frame forward */}
+        <button
+          onClick={onFrameForward}
+          className="p-1 hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={currentTime >= duration}
+        >
+          <SkipForward className="w-4 h-4 text-white" />
+        </button>
 
-      {/* Timecode display */}
-      <div className="flex items-center gap-2 ml-4">
-        <span className="text-sm text-gray-300 font-mono">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </span>
+        {/* Timecode display */}
+        <div className="flex items-center ml-2">
+          <span className="text-[10px] text-gray-300 font-mono">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+        </div>
       </div>
     </div>
   );

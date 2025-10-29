@@ -218,7 +218,7 @@ export default function PreviewCanvas() {
 
       {/* Playback Controls - Show for timeline or single media */}
       {(showTimelinePlayback || showMediaPreview) && (
-        <div className="bg-gray-800 border-t border-gray-700 p-4">
+        <div className="bg-gray-800 border-t border-gray-700 p-2">
           <PlaybackControls
             isPlaying={isPlaying}
             currentTime={currentTime}

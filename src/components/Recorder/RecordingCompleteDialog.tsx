@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Folder } from 'lucide-react';
 
 interface RecordingCompleteDialogProps {
@@ -22,6 +22,22 @@ export default function RecordingCompleteDialog({
   const [addToLibrary, setAddToLibrary] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [compressionProgress, setCompressionProgress] = useState(0);
+  const [quality, setQuality] = useState<'high' | 'medium' | 'low'>('medium');
+  const [frameRate, setFrameRate] = useState<30 | 60>(60);
+
+  // Listen for compression progress
+  useEffect(() => {
+    const handleProgress = (progress: number) => {
+      setCompressionProgress(progress);
+    };
+
+    window.electronAPI?.on('recording:compressionProgress', handleProgress);
+
+    return () => {
+      window.electronAPI?.off('recording:compressionProgress', handleProgress);
+    };
+  }, []);
 
   // Generate default filename
   const getDefaultFilename = () => {
@@ -93,9 +109,14 @@ export default function RecordingCompleteDialog({
         return;
       }
 
-      // Immediately convert to MP4
-      console.log('🎬 Converting to MP4...');
-      const convertResult = await window.electronAPI?.convertRecordingToMP4?.(tempWebMPath, finalPath);
+      // Convert to MP4 with selected quality and frame rate
+      console.log(`🎬 Converting to MP4 (${quality} quality, ${frameRate} fps)...`);
+      const convertResult = await window.electronAPI?.convertRecordingToMP4?.(
+        tempWebMPath,
+        finalPath,
+        quality,
+        frameRate
+      );
 
       if (convertResult?.success) {
         // Delete temp file
@@ -162,6 +183,63 @@ export default function RecordingCompleteDialog({
           </div>
         </div>
 
+        {/* Quality Settings */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-300 mb-2">Video Quality:</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['high', 'medium', 'low'] as const).map((q) => (
+              <button
+                key={q}
+                onClick={() => setQuality(q)}
+                className={`px-4 py-2 rounded transition-colors ${
+                  quality === q
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                {q === 'high' && 'High (CRF 18)'}
+                {q === 'medium' && 'Medium (CRF 23)'}
+                {q === 'low' && 'Low (CRF 28)'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            {quality === 'high' && 'Best quality, larger file size (~5-10 MB/min)'}
+            {quality === 'medium' && 'Balanced quality and file size (~2-5 MB/min)'}
+            {quality === 'low' && 'Smallest file size (~0.5-2 MB/min)'}
+          </p>
+        </div>
+
+        {/* Frame Rate Settings */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-300 mb-2">Frame Rate:</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setFrameRate(30)}
+              className={`px-4 py-2 rounded transition-colors ${
+                frameRate === 30
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              30 FPS (Smooth)
+            </button>
+            <button
+              onClick={() => setFrameRate(60)}
+              className={`px-4 py-2 rounded transition-colors ${
+                frameRate === 60
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              60 FPS (Very Smooth)
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Higher frame rate = smoother video but larger file size
+          </p>
+        </div>
+
         {/* Save Location */}
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-300 mb-2">Save Location:</label>
@@ -195,6 +273,22 @@ export default function RecordingCompleteDialog({
             <span className="text-white">Add to Media Library</span>
           </label>
         </div>
+
+        {/* Progress Bar */}
+        {isSaving && compressionProgress > 0 && (
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-gray-300">Compressing video...</span>
+              <span className="text-sm text-gray-400">{Math.round(compressionProgress)}%</span>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${compressionProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (

@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   convertRecordingToMP4: (webmPath: string, mp4Path: string) => ipcRenderer.invoke('recording:convertToMP4', webmPath, mp4Path),
   deleteFile: (filePath: string) => ipcRenderer.invoke('recording:deleteFile', filePath),
 
+  // System audio loopback (electron-audio-loopback)
+  enableLoopbackAudio: () => ipcRenderer.invoke('enable-loopback-audio'),
+  disableLoopbackAudio: () => ipcRenderer.invoke('disable-loopback-audio'),
+
   // Listen for export progress
   on: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.on(channel, (_, ...args) => callback(...args));

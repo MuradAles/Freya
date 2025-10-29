@@ -11,6 +11,7 @@ interface ScreenRecordingDialogProps {
     customArea?: { x: number; y: number; width: number; height: number; screenId: string };
     includeMicrophone: boolean;
     microphoneId?: string;
+    includeSystemAudio: boolean; // NEW: Control system audio separately
   }) => void;
 }
 
@@ -18,7 +19,8 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
   const [screenType, setScreenType] = useState<'full' | 'window' | 'custom'>('full');
   const [selectedWindowId, setSelectedWindowId] = useState<string>('');
   const [windows, setWindows] = useState<Array<{ id: string; name: string; thumbnail: string }>>([]);
-  const [includeMicrophone, setIncludeMicrophone] = useState(false);
+  const [includeMicrophone, setIncludeMicrophone] = useState(true); // Default: ON
+  const [includeSystemAudio, setIncludeSystemAudio] = useState(true); // Default: ON
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string>('');
   const [microphones, setMicrophones] = useState<Array<{ id: string; label: string }>>([]);
   const [showCustomAreaSelector, setShowCustomAreaSelector] = useState(false);
@@ -191,6 +193,7 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
       customArea: screenType === 'custom' ? customArea! : undefined,
       includeMicrophone,
       microphoneId: includeMicrophone ? selectedMicrophoneId : undefined,
+      includeSystemAudio, // Pass system audio toggle
     });
   };
 
@@ -298,39 +301,59 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
             )}
             </div>
 
-            {/* Microphone Toggle */}
-            <div className="mt-6">
-          <label className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
-            <input
-              type="checkbox"
-              checked={includeMicrophone}
-              onChange={(e) => {
-                setIncludeMicrophone(e.target.checked);
-                if (e.target.checked && microphones.length === 0) {
-                  loadMicrophones();
-                }
-              }}
-              className="w-5 h-5 text-purple-600 rounded"
-            />
-            <span className="text-white">Include Microphone</span>
-          </label>
+            {/* Audio Controls */}
+            <div className="mt-6 space-y-3">
+              <div className="text-sm font-semibold text-gray-300 mb-2">Audio Sources:</div>
 
-          {/* Microphone Dropdown */}
-          {includeMicrophone && (
-            <div className="mt-3 ml-8">
-              <select
-                value={selectedMicrophoneId}
-                onChange={(e) => setSelectedMicrophoneId(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white"
-              >
-                {microphones.map((mic) => (
-                  <option key={mic.id} value={mic.id}>
-                    {mic.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+              {/* System Audio Toggle */}
+              <label className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                <input
+                  type="checkbox"
+                  checked={includeSystemAudio}
+                  onChange={(e) => setIncludeSystemAudio(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="text-white block">System Audio (Media)</span>
+                  <span className="text-xs text-gray-400">Music, YouTube, game sounds, etc.</span>
+                </div>
+              </label>
+
+              {/* Microphone Toggle */}
+              <label className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                <input
+                  type="checkbox"
+                  checked={includeMicrophone}
+                  onChange={(e) => {
+                    setIncludeMicrophone(e.target.checked);
+                    if (e.target.checked && microphones.length === 0) {
+                      loadMicrophones();
+                    }
+                  }}
+                  className="w-5 h-5 text-purple-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="text-white block">Microphone</span>
+                  <span className="text-xs text-gray-400">Your voice</span>
+                </div>
+              </label>
+
+              {/* Microphone Dropdown */}
+              {includeMicrophone && (
+                <div className="ml-8">
+                  <select
+                    value={selectedMicrophoneId}
+                    onChange={(e) => setSelectedMicrophoneId(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    {microphones.map((mic) => (
+                      <option key={mic.id} value={mic.id}>
+                        {mic.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

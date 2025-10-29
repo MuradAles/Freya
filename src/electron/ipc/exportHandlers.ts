@@ -1,6 +1,4 @@
-import { ipcMain } from 'electron';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
+import { ipcMain, app } from 'electron';
 import ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -8,8 +6,35 @@ import * as os from 'os';
 import type { Track, TimelineClip } from '../../types/timeline';
 import type { MediaAsset } from '../../types/media';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+// Determine FFmpeg and FFprobe paths based on environment
+function getFfmpegPath(): string {
+  if (app.isPackaged) {
+    // In production, binaries are in resources folder
+    const resourcesPath = path.join(process.resourcesPath || app.getAppPath(), 'resources');
+    return path.join(resourcesPath, 'ffmpeg.exe');
+  } else {
+    // In development, use the installer path with correct require pattern
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+    return ffmpegPath;
+  }
+}
+
+function getFfprobePath(): string {
+  if (app.isPackaged) {
+    // In production, binaries are in resources folder
+    const resourcesPath = path.join(process.resourcesPath || app.getAppPath(), 'resources');
+    return path.join(resourcesPath, 'ffprobe.exe');
+  } else {
+    // In development, use the installer path with correct require pattern
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ffprobePath = require('@ffprobe-installer/ffprobe').path;
+    return ffprobePath;
+  }
+}
+
+ffmpeg.setFfmpegPath(getFfmpegPath());
+ffmpeg.setFfprobePath(getFfprobePath());
 
 interface ExportJob {
   tracks: Track[];
@@ -49,7 +74,7 @@ export function setupExportHandlers() {
         outputPath,
         resolution: res,
         progressCallback: (progress) => {
-          console.log(`📈 Export progress: ${progress}%`);
+          // console.log(`📈 Export progress: ${progress}%`);
           // Send progress to renderer
           event.sender.send('export:progress', progress);
         }
@@ -106,17 +131,18 @@ async function exportTimeline(job: ExportJob): Promise<void> {
   });
   console.log(`\n==========================\n`);
   
-  // Send initial progress
-  job.progressCallback(5);
-
   // Process each clip: trim, apply effects, save to temp file
   const tempDir = path.join(os.tmpdir(), 'freya-export-' + Date.now());
   fs.mkdirSync(tempDir, { recursive: true });
   console.log(`📁 Created temp directory: ${tempDir}`);
 
+  // Send initial progress
+  job.progressCallback(5);
+
   const processedClips: ClipProcessing[] = [];
 
   // Process each clip
+  const clipProcessProgressWeight = 30; // 5% -> 35%
   for (let i = 0; i < allClips.length; i++) {
     const { clip, media, trackOrder } = allClips[i];
     console.log(`\n🎬 Processing clip ${i + 1}/${allClips.length}:`);
@@ -129,15 +155,15 @@ async function exportTimeline(job: ExportJob): Promise<void> {
     const processedClip = await processClip(clip, media, resolution, tempDir, trackOrder);
     processedClips.push(processedClip);
     
-    // Update progress (5% -> 50%)
-    const progress = 5 + (i + 1) * 45 / allClips.length;
+    // Update progress (5% -> 35%)
+    const progress = 5 + (i + 1) * clipProcessProgressWeight / allClips.length;
     job.progressCallback(progress);
     console.log(`   ✅ Clip ${i + 1} processed → temp file: ${processedClip.tempFile}`);
   }
 
   // Build FFmpeg complex filter for multi-track composition
   console.log('\n🔗 Analyzing timeline structure...');
-  job.progressCallback(50);
+  job.progressCallback(35);
   
   // Sort clips by timeline position
   const sortedClips = processedClips.sort((a, b) => a.clip.startTime - b.clip.startTime);
@@ -209,7 +235,7 @@ async function buildSimpleComposition(
   fs.writeFileSync(fileListPath, fileList);
   
   console.log(`\n🎥 Starting FFmpeg encoding to: ${outputPath}`);
-  job.progressCallback(55);
+  job.progressCallback(40);
 
   return new Promise((resolve, reject) => {
     const command = ffmpeg()
@@ -226,7 +252,7 @@ async function buildSimpleComposition(
       .videoCodec('libx264')
       .audioCodec('aac')
       .audioBitrate('192k')
-      .outputOptions(['-preset', 'slow', '-crf', '18'])
+      .outputOptions(['-preset', 'medium', '-crf', '20']) // Changed from 'slow' to 'medium' for faster exports
       .saveToFile(outputPath);
 
     command.on('start', (cmdLine) => {
@@ -247,10 +273,31 @@ async function buildSimpleComposition(
       reject(err);
     });
 
+    let progressStartTime = Date.now();
+    const estimatedDuration = maxEndTime;
+    
     command.on('progress', (progress) => {
-      const mappedProgress = 55 + (progress.percent || 0) * 0.45;
+      let progressPercent = progress.percent;
+      
+      // FFmpeg progress is often undefined on Windows, estimate based on time
+      if (!progressPercent && progress.timemark) {
+        // Parse time string like "00:00:15.123"
+        const timeParts = progress.timemark.split(':').map(parseFloat);
+        const currentSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
+        progressPercent = (currentSeconds / estimatedDuration) * 100;
+      }
+      
+      // Fallback: estimate based on elapsed time
+      if (!progressPercent) {
+        const elapsedMs = Date.now() - progressStartTime;
+        const estimatedTotalMs = estimatedDuration * 1000 * 2; // Rough estimate
+        progressPercent = Math.min(95, (elapsedMs / estimatedTotalMs) * 100);
+      }
+      
+      // Map FFmpeg progress: 40% -> 95% (save last 5% for finalization)
+      const mappedProgress = 40 + (progressPercent || 0) * 0.55;
       job.progressCallback(mappedProgress);
-      console.log(`⏳ FFmpeg progress: ${progress.percent}%`);
+      // console.log(`⏳ FFmpeg progress: ${progressPercent?.toFixed(1) || 'unknown'}%`);
     });
   });
 }
@@ -294,176 +341,264 @@ async function buildMultiTrackComposition(
     });
   }
 
-  job.progressCallback(55);
+    job.progressCallback(40);
 
   return new Promise((resolve, reject) => {
-    // Create base canvas (black background)
-    const command = ffmpeg()
-      .input(`color=black:s=${resolution.width}x${resolution.height}:r=30`)
-      .inputOptions(['-f', 'lavfi', '-t', maxEndTime.toString()]);
+    // First, check which clips have audio before building the filter
+    Promise.all([
+      ...videoClips.map(clip => hasAudioStream(clip.tempFile)),
+      ...audioClips.map(clip => hasAudioStream(clip.tempFile))
+    ]).then(async (audioFlags: boolean[]) => {
+      console.log(`\n🔍 Audio detection complete`);
+      console.log(`   Video clips with audio: ${audioFlags.slice(0, videoClips.length).filter(Boolean).length}/${videoClips.length}`);
+      console.log(`   Audio-only clips with audio: ${audioFlags.slice(videoClips.length).filter(Boolean).length}/${audioClips.length}`);
 
-    // Add all video clips as inputs (these might have audio)
-    videoClips.forEach(clip => {
-      command.input(clip.tempFile);
-    });
+      // Create base canvas (black background)
+      const command = ffmpeg()
+        .input(`color=black:s=${resolution.width}x${resolution.height}:r=30`)
+        .inputOptions(['-f', 'lavfi', '-t', maxEndTime.toString()]);
 
-    // Add all audio-only clips as inputs
-    audioClips.forEach(clip => {
-      command.input(clip.tempFile);
-    });
-    
-    console.log(`\n📥 Input structure:
-      Input 0: Black canvas
-      Video inputs: ${videoClips.length} (may have audio)
-      Audio-only inputs: ${audioClips.length}`);
+      // Add all video clips as inputs (these might have audio)
+      videoClips.forEach(clip => {
+        command.input(clip.tempFile);
+      });
 
-    // Build complex filter
-    const filterParts: string[] = [];
-    let currentOutput = '[0:v]';
-
-    // Overlay each video at its timeline position
-    videoClips.forEach((clip, idx) => {
-      const inputIndex = idx + 1; // +1 because 0 is the black canvas
-      const outputLabel = idx === videoClips.length - 1 ? 'vout' : `v${idx + 1}`;
+      // Add all audio-only clips as inputs
+      audioClips.forEach(clip => {
+        command.input(clip.tempFile);
+      });
       
-      // Use enable filter to show clip only during its time range
-      const startTime = clip.clip.startTime;
-      const endTime = startTime + clip.clip.duration;
-      
-      // Check if clip has position (is an overlay on canvas)
-      if (clip.clip.position) {
-        const pos = clip.clip.position;
+      console.log(`\n📥 Input structure:
+        Input 0: Black canvas
+        Video inputs: ${videoClips.length} (may have audio)
+        Audio-only inputs: ${audioClips.length}`);
+
+      // Build complex filter
+      const filterParts: string[] = [];
+      let currentOutput = '[0:v]';
+
+      // Overlay each video at its timeline position
+      videoClips.forEach((clip, idx) => {
+        const inputIndex = idx + 1; // +1 because 0 is the black canvas
+        const outputLabel = idx === videoClips.length - 1 ? 'vout' : `v${idx + 1}`;
         
-        // Calculate absolute pixel positions (clips stored as 0-1 normalized)
-        const x = Math.round(pos.x * resolution.width);
-        const y = Math.round(pos.y * resolution.height);
-        const w = Math.round(pos.width * resolution.width);
-        const h = Math.round(pos.height * resolution.height);
+        // Use enable filter to show clip only during its time range
+        const startTime = clip.clip.startTime;
+        const endTime = startTime + clip.clip.duration;
         
-        console.log(`   📐 Clip: ${clip.media.name}`);
-        console.log(`      Normalized: x=${pos.x.toFixed(4)}, y=${pos.y.toFixed(4)}, w=${pos.width.toFixed(4)}, h=${pos.height.toFixed(4)}`);
-        console.log(`      Absolute: x=${x}, y=${y}, w=${w}, h=${h} (out of ${resolution.width}x${resolution.height})`);
-        console.log(`      Rotation: ${pos.rotation?.toFixed(2) || 0}°`);
-        console.log(`      Track Order: ${clip.trackOrder}, Time: ${startTime.toFixed(2)}s`);
-        
-        // Build filter chain: scale → rotate (if needed) → overlay
-        const transformedLabel = `transformed${idx}`;
-        const scaleFilter = `scale=${w}:${h}`;
-        
-        // Calculate overlay position (may need adjustment for rotation)
-        let overlayX = x;
-        let overlayY = y;
-        
-        // Apply rotation if specified
-        if (pos.rotation && pos.rotation !== 0) {
-          // FFmpeg rotate filter: radians = degrees * PI / 180
-          const radians = (pos.rotation * Math.PI) / 180;
-          // Calculate output size to prevent clipping
-          // When rotating by θ, need diagonal size: diagonal = sqrt(w² + h²)
-          const diagonal = Math.sqrt(w * w + h * h);
-          const ow = Math.ceil(diagonal);
-          const oh = Math.ceil(diagonal);
-          const rotationFilter = `rotate='${radians}':ow=${ow}:oh=${oh}:fillcolor=black@0`;
+        // Check if clip has position (is an overlay on canvas)
+        if (clip.clip.position) {
+          const pos = clip.clip.position;
           
-          // Adjust overlay position to keep center in same place
-          // Original center: (x + w/2, y + h/2)
-          // After rotation, expanded image center is at (ow/2, oh/2)
-          // New overlay position: (x + w/2 - ow/2, y + h/2 - oh/2)
-          overlayX = Math.round(x + w / 2 - ow / 2);
-          overlayY = Math.round(y + h / 2 - oh / 2);
+          // Calculate absolute pixel positions (clips stored as 0-1 normalized)
+          const x = Math.round(pos.x * resolution.width);
+          const y = Math.round(pos.y * resolution.height);
+          const w = Math.round(pos.width * resolution.width);
+          const h = Math.round(pos.height * resolution.height);
           
-          console.log(`      🔄 Rotation adjustment: center (${x + w/2}, ${y + h/2}) → overlay (${overlayX}, ${overlayY})`);
+          console.log(`   📐 Clip: ${clip.media.name}`);
+          console.log(`      Normalized: x=${pos.x.toFixed(4)}, y=${pos.y.toFixed(4)}, w=${pos.width.toFixed(4)}, h=${pos.height.toFixed(4)}`);
+          console.log(`      Absolute: x=${x}, y=${y}, w=${w}, h=${h} (out of ${resolution.width}x${resolution.height})`);
+          console.log(`      Rotation: ${pos.rotation?.toFixed(2) || 0}°`);
+          console.log(`      Track Order: ${clip.trackOrder}, Time: ${startTime.toFixed(2)}s`);
           
+          // Build filter chain: scale → rotate (if needed) → overlay
+          const transformedLabel = `transformed${idx}`;
+          const scaleFilter = `scale=${w}:${h}`;
+          
+          // Calculate overlay position (may need adjustment for rotation)
+          let overlayX = x;
+          let overlayY = y;
+          
+          // Apply rotation if specified
+          if (pos.rotation && pos.rotation !== 0) {
+            // FFmpeg rotate filter: radians = degrees * PI / 180
+            const radians = (pos.rotation * Math.PI) / 180;
+            // Calculate output size to prevent clipping
+            // When rotating by θ, need diagonal size: diagonal = sqrt(w² + h²)
+            const diagonal = Math.sqrt(w * w + h * h);
+            const ow = Math.ceil(diagonal);
+            const oh = Math.ceil(diagonal);
+            const rotationFilter = `rotate='${radians}':ow=${ow}:oh=${oh}:fillcolor=black@0`;
+            
+            // Adjust overlay position to keep center in same place
+            // Original center: (x + w/2, y + h/2)
+            // After rotation, expanded image center is at (ow/2, oh/2)
+            // New overlay position: (x + w/2 - ow/2, y + h/2 - oh/2)
+            overlayX = Math.round(x + w / 2 - ow / 2);
+            overlayY = Math.round(y + h / 2 - oh / 2);
+            
+            console.log(`      🔄 Rotation adjustment: center (${x + w/2}, ${y + h/2}) → overlay (${overlayX}, ${overlayY})`);
+            
+            filterParts.push(
+              `[${inputIndex}:v]${scaleFilter},${rotationFilter}[${transformedLabel}]`
+            );
+          } else {
+            filterParts.push(
+              `[${inputIndex}:v]${scaleFilter}[${transformedLabel}]`
+            );
+          }
+          
+          // Overlay at position (adjusted for rotation if needed)
+          const overlayFilter = `overlay=${overlayX}:${overlayY}:enable='between(t,${startTime},${endTime})'`;
           filterParts.push(
-            `[${inputIndex}:v]${scaleFilter},${rotationFilter}[${transformedLabel}]`
+            `${currentOutput}[${transformedLabel}]${overlayFilter}[${outputLabel}]`
           );
         } else {
+          // Full-screen clip (default behavior)
           filterParts.push(
-            `[${inputIndex}:v]${scaleFilter}[${transformedLabel}]`
+            `${currentOutput}[${inputIndex}:v]overlay=enable='between(t,${startTime},${endTime})'[${outputLabel}]`
           );
         }
         
-        // Overlay at position (adjusted for rotation if needed)
-        const overlayFilter = `overlay=${overlayX}:${overlayY}:enable='between(t,${startTime},${endTime})'`;
+        currentOutput = `[${outputLabel}]`;
+      });
+
+      // Extract and mix all audio tracks with proper timing
+      const audioDelayParts: string[] = [];
+      const delayedAudioInputs: string[] = [];
+      let audioDelayCounter = 0;
+
+      // Process audio from video clips - ONLY IF THEY HAVE AUDIO
+      videoClips.forEach((clip, i) => {
+        if (!audioFlags[i]) {
+          console.log(`   ⚠️  Skipping audio for ${clip.media.name} (no audio stream)`);
+          return;
+        }
+
+        const videoInputIndex = i + 1;
+        const startTime = clip.clip.startTime;
+        const startMs = Math.floor(startTime * 1000); // Convert to milliseconds
+
+        console.log(`   🎵 Video audio ${i + 1}: ${clip.media.name} - delay by ${startTime.toFixed(3)}s (${startMs}ms)`);
+
+        // Delay audio to match timeline position - use |all=1 to delay all channels
+        const delayedLabel = `adelayed${audioDelayCounter}`;
+        audioDelayParts.push(`[${videoInputIndex}:a]adelay=${startMs}|all=1[${delayedLabel}]`);
+        delayedAudioInputs.push(`[${delayedLabel}]`);
+        audioDelayCounter++;
+      });
+
+      // Process audio-only clips - ONLY IF THEY HAVE AUDIO
+      audioClips.forEach((clip, i) => {
+        const audioIndex = videoClips.length + i;
+        if (!audioFlags[audioIndex]) {
+          console.log(`   ⚠️  Skipping audio for ${clip.media.name} (no audio stream)`);
+          return;
+        }
+
+        const audioInputIndex = audioIndex + 1;
+        const startTime = clip.clip.startTime;
+        const startMs = Math.floor(startTime * 1000); // Convert to milliseconds
+
+        console.log(`   🎵 Audio clip ${i + 1}: ${clip.media.name} - delay by ${startTime.toFixed(3)}s (${startMs}ms)`);
+
+        // Delay audio to match timeline position - use |all=1 to delay all channels
+        const delayedLabel = `adelayed${audioDelayCounter}`;
+        audioDelayParts.push(`[${audioInputIndex}:a]adelay=${startMs}|all=1[${delayedLabel}]`);
+        delayedAudioInputs.push(`[${delayedLabel}]`);
+        audioDelayCounter++;
+      });
+    
+      // Add all delay filters
+      if (audioDelayParts.length > 0) {
+        filterParts.push(...audioDelayParts);
+        
+        // Mix all delayed audio streams
         filterParts.push(
-          `${currentOutput}[${transformedLabel}]${overlayFilter}[${outputLabel}]`
-        );
-      } else {
-        // Full-screen clip (default behavior)
-        filterParts.push(
-          `${currentOutput}[${inputIndex}:v]overlay=enable='between(t,${startTime},${endTime})'[${outputLabel}]`
+          `${delayedAudioInputs.join('')}amix=inputs=${delayedAudioInputs.length}:duration=longest[aout]`
         );
       }
+
+      const complexFilter = filterParts.join(';');
+      console.log(`\n🔧 FFmpeg filter: ${complexFilter.substring(0, 200)}...`);
+
+      // Determine if we have any audio outputs
+      const hasAudioOutput = delayedAudioInputs.length > 0;
+
+      command
+        .complexFilter(complexFilter)
+        .outputOptions([
+          '-map', '[vout]',
+          hasAudioOutput ? '-map' : '',
+          hasAudioOutput ? '[aout]' : '',
+          '-c:v', 'libx264',
+          '-preset', 'medium', // Changed from 'slow' to 'medium' for faster exports (3-5x speed boost)
+          '-crf', '20', // Changed from 18 to 20 for faster encoding with minimal quality loss
+          ...(hasAudioOutput ? ['-c:a', 'aac', '-b:a', '192k'] : []),
+          '-t', maxEndTime.toString(),
+          '-ignore_unknown' // Handle missing audio streams gracefully
+        ].filter(Boolean))
+        .saveToFile(outputPath);
+
+      command.on('start', (cmdLine) => {
+        console.log('🔥 FFmpeg command:', cmdLine);
+      });
+
+      command.on('end', () => {
+        console.log('✅ Export complete!');
+        console.log(`📁 Output saved to: ${outputPath}`);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        job.progressCallback(100);
+        resolve();
+      });
+
+      command.on('error', (err) => {
+        console.error('❌ FFmpeg error:', err.message);
+        console.error('Full error:', err);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        reject(err);
+      });
+
+      let progressStartTime = Date.now();
+      const estimatedDuration = maxEndTime;
       
-      currentOutput = `[${outputLabel}]`;
-    });
-
-    // Extract and mix all audio tracks
-    const audioInputs: string[] = [];
-    
-    // Try to extract audio from video clips
-    videoClips.forEach((_, i) => {
-      const videoInputIndex = i + 1;
-      audioInputs.push(`[${videoInputIndex}:a]`);
-    });
-    
-    // Add audio from audio-only clips
-    audioClips.forEach((_, i) => {
-      const audioInputIndex = videoClips.length + i + 1;
-      audioInputs.push(`[${audioInputIndex}:a]`);
-    });
-    
-    // Mix all audio streams
-    // Note: This may fail if some video inputs don't have audio
-    // In that case, we'd need to use '-ignore_unknown' or handle missing streams
-    if (audioInputs.length > 0) {
-      filterParts.push(
-        `${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=longest[aout]`
-      );
-    }
-
-    const complexFilter = filterParts.join(';');
-    console.log(`\n🔧 FFmpeg filter: ${complexFilter.substring(0, 200)}...`);
-
-    command
-      .complexFilter(complexFilter)
-      .outputOptions([
-        '-map', '[vout]',
-        audioClips.length > 0 ? '-map' : '',
-        audioClips.length > 0 ? '[aout]' : '',
-        '-c:v', 'libx264',
-        '-preset', 'slow', // Better quality (slower encoding)
-        '-crf', '18', // Lower = higher quality (18 is visually lossless, 23 is default)
-        '-c:a', 'aac',
-        '-b:a', '192k', // Higher audio bitrate for better quality
-        '-t', maxEndTime.toString(),
-        '-ignore_unknown' // Handle missing audio streams gracefully
-      ].filter(Boolean))
-      .saveToFile(outputPath);
-
-    command.on('start', (cmdLine) => {
-      console.log('🔥 FFmpeg command:', cmdLine);
-    });
-
-    command.on('end', () => {
-      console.log('✅ Export complete!');
-      console.log(`📁 Output saved to: ${outputPath}`);
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      job.progressCallback(100);
-      resolve();
-    });
-
-    command.on('error', (err) => {
-      console.error('❌ FFmpeg error:', err.message);
-      console.error('Full error:', err);
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      command.on('progress', (progress) => {
+        let progressPercent = progress.percent;
+        
+        // FFmpeg progress is often undefined on Windows, estimate based on time
+        if (!progressPercent && progress.timemark) {
+          // Parse time string like "00:00:15.123"
+          const timeParts = progress.timemark.split(':').map(parseFloat);
+          const currentSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
+          progressPercent = (currentSeconds / estimatedDuration) * 100;
+        }
+        
+        // Fallback: estimate based on elapsed time
+        if (!progressPercent) {
+          const elapsedMs = Date.now() - progressStartTime;
+          const estimatedTotalMs = estimatedDuration * 1000 * 2; // Rough estimate
+          progressPercent = Math.min(95, (elapsedMs / estimatedTotalMs) * 100);
+        }
+        
+        // Map FFmpeg progress: 40% -> 95% (save last 5% for finalization)
+        const mappedProgress = 40 + (progressPercent || 0) * 0.55;
+        job.progressCallback(mappedProgress);
+        // console.log(`⏳ FFmpeg progress: ${progressPercent?.toFixed(1) || 'unknown'}%`);
+      });
+    }).catch(err => {
+      console.error('❌ Error during audio detection:', err);
       reject(err);
     });
+  });
+}
 
-    command.on('progress', (progress) => {
-      const mappedProgress = 55 + (progress.percent || 0) * 0.45;
-      job.progressCallback(mappedProgress);
-      console.log(`⏳ FFmpeg progress: ${progress.percent}%`);
+/**
+ * Check if a media file has an audio stream
+ */
+async function hasAudioStream(filePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err || !metadata) {
+        console.log(`⚠️  Could not probe ${path.basename(filePath)} for audio:`, err?.message || 'Unknown error');
+        resolve(false);
+        return;
+      }
+      
+      // Check if there are any audio streams
+      const hasAudio = metadata.streams?.some(stream => stream.codec_type === 'audio') || false;
+      console.log(`   🎵 ${path.basename(filePath)} has audio: ${hasAudio}`);
+      resolve(hasAudio);
     });
   });
 }
@@ -488,6 +623,7 @@ async function processClip(
 
   // Build FFmpeg command with filters
   const filters: string[] = [];
+  const audioFilters: string[] = [];
 
   // Scale to target resolution
   if (media.type === 'video') {
@@ -496,7 +632,25 @@ async function processClip(
 
   // Apply speed effect
   if (clip.speed && clip.speed !== 1) {
-    filters.push(`setpts=${1/clip.speed}*PTS`);
+    // Video speed: adjust PTS (presentation timestamp)
+    if (media.type === 'video') {
+      filters.push(`setpts=${1/clip.speed}*PTS`);
+    }
+
+    // Audio speed: use atempo filter (must be between 0.5 and 2.0)
+    // For speeds outside this range, chain multiple atempo filters
+    let remainingSpeed = clip.speed;
+    while (remainingSpeed > 2.0) {
+      audioFilters.push('atempo=2.0');
+      remainingSpeed /= 2.0;
+    }
+    while (remainingSpeed < 0.5) {
+      audioFilters.push('atempo=0.5');
+      remainingSpeed /= 0.5;
+    }
+    if (remainingSpeed !== 1.0) {
+      audioFilters.push(`atempo=${remainingSpeed}`);
+    }
   }
 
   // Apply fade effects
@@ -523,7 +677,12 @@ async function processClip(
 
     // Handle volume
     if (clip.volume && clip.volume !== 1) {
-      command.audioFilters(`volume=${clip.volume}`);
+      audioFilters.push(`volume=${clip.volume}`);
+    }
+
+    // Apply audio filters if any
+    if (audioFilters.length > 0) {
+      command.audioFilters(audioFilters);
     }
 
     command

@@ -113,7 +113,7 @@ export default function PropertiesPanel() {
                 <div className="text-xs text-gray-400 mb-1">Source Range</div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">Start Time (MM:SS)</label>
+                    <label className="text-xs text-gray-400 block mb-1">Start Time</label>
                     <input 
                       type="text" 
                       placeholder="MM:SS"
@@ -165,7 +165,7 @@ export default function PropertiesPanel() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">Duration (MM:SS)</label>
+                    <label className="text-xs text-gray-400 block mb-1">Duration</label>
                     <input 
                       type="text" 
                       placeholder="MM:SS"
@@ -223,7 +223,7 @@ export default function PropertiesPanel() {
                 <div className="text-xs text-gray-400 mb-1">Timeline Position</div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">Start Position (MM:SS)</label>
+                    <label className="text-xs text-gray-400 block mb-1">Start Position</label>
                     <input 
                       type="text" 
                       placeholder="MM:SS"
@@ -261,7 +261,7 @@ export default function PropertiesPanel() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block mb-1">End Position (MM:SS)</label>
+                    <label className="text-xs text-gray-400 block mb-1">End Position</label>
                     <div className="w-full bg-gray-700 text-gray-400 px-2 py-1 rounded text-sm font-mono flex items-center">
                       {formatTime(selectedClip.startTime + selectedClip.duration)}
                     </div>

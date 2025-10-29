@@ -1,19 +1,33 @@
-import { ipcMain, dialog } from 'electron';
-import { app } from 'electron';
-import { nativeImage } from 'electron';
+import { ipcMain, dialog, nativeImage, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import ffmpeg from 'fluent-ffmpeg';
 
-const execAsync = promisify(exec);
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+// Determine FFmpeg path based on environment
+function getFfmpegPath(): string {
+  if (app.isPackaged) {
+    const resourcesPath = path.join(process.resourcesPath || app.getAppPath(), 'resources');
+    return path.join(resourcesPath, 'ffmpeg.exe');
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('@ffmpeg-installer/ffmpeg').path;
+  }
+}
+
+function getFfprobePath(): string {
+  if (app.isPackaged) {
+    const resourcesPath = path.join(process.resourcesPath || app.getAppPath(), 'resources');
+    return path.join(resourcesPath, 'ffprobe.exe');
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('@ffprobe-installer/ffprobe').path;
+  }
+}
 
 export function setupFileHandlers() {
+  // Configure FFmpeg paths
+  ffmpeg.setFfmpegPath(getFfmpegPath());
+  ffmpeg.setFfprobePath(getFfprobePath());
   // Handle file picker dialog
   ipcMain.handle('dialog:openFile', async () => {
     const result = await dialog.showOpenDialog({
