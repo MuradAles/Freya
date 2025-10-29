@@ -36,6 +36,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string) => 
     ipcRenderer.invoke('export:start', tracks, mediaAssets, outputPath, resolution),
 
+  // Recording
+  getRecordingSources: () => ipcRenderer.invoke('recording:getSources'),
+  saveRecording: (blobData: string, filePath: string) => ipcRenderer.invoke('recording:saveFile', blobData, filePath),
+  showRecordingSaveDialog: (defaultFilename: string) => ipcRenderer.invoke('recording:showSaveDialog', defaultFilename),
+  convertRecordingToMP4: (webmPath: string, mp4Path: string) => ipcRenderer.invoke('recording:convertToMP4', webmPath, mp4Path),
+  deleteFile: (filePath: string) => ipcRenderer.invoke('recording:deleteFile', filePath),
+
   // Listen for export progress
   on: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.on(channel, (_, ...args) => callback(...args));

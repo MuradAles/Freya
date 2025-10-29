@@ -38,6 +38,7 @@ export default function TimelineNew() {
   }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [viewportWidth, setViewportWidth] = useState(2000);
   const [dragState, setDragState] = useState<{
     type: 'move' | 'trim-left' | 'trim-right' | null;
     clipId: string | null;
@@ -54,12 +55,29 @@ export default function TimelineNew() {
     startTrimStart: 0,
   });
 
+  // Track viewport width
+  useEffect(() => {
+    const updateViewportWidth = () => {
+      if (containerRef.current) {
+        setViewportWidth(containerRef.current.clientWidth - TRACK_LABEL_WIDTH);
+      }
+    };
+    
+    updateViewportWidth();
+    window.addEventListener('resize', updateViewportWidth);
+    
+    return () => window.removeEventListener('resize', updateViewportWidth);
+  }, []);
+
   // Calculate timeline width based on content
   const timelineDuration = Math.max(
     60,
     ...tracks.flatMap(t => t.clips.map(c => c.startTime + c.duration))
   );
-  const timelineWidth = timelineDuration * zoom;
+  // Ensure timeline extends to at least the viewport width (100% visible) plus extra space
+  const minTimelineWidth = viewportWidth;
+  const contentWidth = timelineDuration * zoom * 1.5;
+  const timelineWidth = Math.max(minTimelineWidth, contentWidth);
 
   // Initialize with one track
   useEffect(() => {
@@ -99,7 +117,9 @@ export default function TimelineNew() {
     else if (zoom >= 5) interval = 30;
     else if (zoom >= 2) interval = 60;
 
-    for (let t = 0; t <= timelineDuration; t += interval) {
+    // Extend markers to cover the full ruler width (timelineWidth)
+    const maxDuration = timelineWidth / zoom;
+    for (let t = 0; t <= maxDuration; t += interval) {
       markers.push({ time: t, label: formatTime(t) });
     }
     return markers;
@@ -220,17 +240,61 @@ export default function TimelineNew() {
         const newTrimStart = Math.max(0, dragState.startTrimStart + deltaTime);
         const newDuration = Math.max(0.1, dragState.startDuration - deltaTime);
         const newStartTime = dragState.startTime + deltaTime;
+        
+        // Get the clip and media to validate against source duration
         if (dragState.clipId) {
-          updateClip(dragState.clipId, {
-            trimStart: newTrimStart,
-            duration: newDuration,
-            startTime: Math.max(0, newStartTime),
-          });
+          const clip = tracks.flatMap(t => t.clips).find(c => c.id === dragState.clipId);
+          if (clip) {
+            const media = getMediaById(clip.assetId);
+            
+            // For video/audio, ensure we don't exceed source duration
+            if (media && (media.type === 'video' || media.type === 'audio')) {
+              const maxEndTime = media.duration;
+              const wouldExceedSource = newTrimStart + newDuration > maxEndTime;
+              
+              if (!wouldExceedSource && newDuration > 0.1) {
+                updateClip(dragState.clipId, {
+                  trimStart: newTrimStart,
+                  duration: newDuration,
+                  startTime: Math.max(0, newStartTime),
+                });
+              }
+            } else {
+              // For images or unknown types, no limit
+              if (newDuration > 0.1) {
+                updateClip(dragState.clipId, {
+                  trimStart: newTrimStart,
+                  duration: newDuration,
+                  startTime: Math.max(0, newStartTime),
+                });
+              }
+            }
+          }
         }
       } else if (dragState.type === 'trim-right') {
         const newDuration = Math.max(0.1, dragState.startDuration + deltaTime);
+        
+        // Get the clip and media to validate against source duration
         if (dragState.clipId) {
-          updateClip(dragState.clipId, { duration: newDuration });
+          const clip = tracks.flatMap(t => t.clips).find(c => c.id === dragState.clipId);
+          if (clip) {
+            const media = getMediaById(clip.assetId);
+            
+            // For video/audio, limit to source duration
+            if (media && (media.type === 'video' || media.type === 'audio')) {
+              const trimStart = clip.trimStart ?? 0;
+              const maxDuration = media.duration - trimStart;
+              
+              // Cap the new duration to max allowed
+              const limitedDuration = Math.min(newDuration, maxDuration);
+              if (limitedDuration >= 0.1) {
+                updateClip(dragState.clipId, { duration: limitedDuration });
+              }
+            } else {
+              // For images or unknown types, no limit
+              updateClip(dragState.clipId, { duration: newDuration });
+            }
+          }
         }
       }
     };

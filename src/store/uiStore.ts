@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import type { MediaAsset } from '../types/media';
 
 interface UIStore {
+  // Mode state
+  currentMode: 'editor' | 'recorder';
+  
   // Recording state
   isRecording: boolean;
   recordingSources: {
@@ -22,6 +25,7 @@ interface UIStore {
   selectedClipIds: string[];
   
   // Actions
+  setMode: (mode: 'editor' | 'recorder') => void;
   setRecording: (isRecording: boolean) => void;
   setRecordingSource: (source: 'screen' | 'camera' | 'microphone', enabled: boolean) => void;
   setExporting: (isExporting: boolean) => void;
@@ -33,6 +37,8 @@ interface UIStore {
 
 export const useUIStore = create<UIStore>((set) => ({
   // Initial state
+  currentMode: 'editor',
+  
   isRecording: false,
   recordingSources: {
     screen: false,
@@ -49,6 +55,7 @@ export const useUIStore = create<UIStore>((set) => ({
   selectedClipIds: [],
   
   // Actions
+  setMode: (mode) => set({ currentMode: mode }),
   setRecording: (isRecording) => set({ isRecording }),
   
   setRecordingSource: (source, enabled) => set((state) => ({

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useMediaStore } from '../../store/mediaStore';
 import { useCanvasRendering } from '../../hooks/useCanvasRendering';
@@ -10,6 +10,9 @@ interface CompositeCanvasProps {
   isPlaying: boolean;
 }
 
+// Key for localStorage
+const RENDER_SCALE_STORAGE_KEY = 'freya-canvas-render-scale';
+
 export default function CompositeCanvas({ playheadPosition, isPlaying }: CompositeCanvasProps) {
   const { tracks } = useTimelineStore();
   const { getMediaById } = useMediaStore();
@@ -18,13 +21,21 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
   // UI state
   const [showGrid, setShowGrid] = useState(true);
   const [canvasColor, setCanvasColor] = useState('#000000');
+  
+  // Load render scale from localStorage or default to 2
+  const [renderScale, setRenderScale] = useState(() => {
+    const saved = localStorage.getItem(RENDER_SCALE_STORAGE_KEY);
+    return saved ? parseFloat(saved) : 2;
+  });
+
+  // Save render scale to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(RENDER_SCALE_STORAGE_KEY, renderScale.toString());
+  }, [renderScale]);
 
   // Canvas dimensions (logical size - actual rendering will be at higher resolution)
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
-
-  // Render scale for higher quality (4x = ultra high quality)
-  const RENDER_SCALE = 4;
 
   // Get all clips at playhead - inline to avoid recreation issues
   const getClipsAtPlayhead = () => {
@@ -55,7 +66,7 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
     canvasColor,
     CANVAS_WIDTH,
     CANVAS_HEIGHT,
-    RENDER_SCALE,
+    RENDER_SCALE: renderScale,
   });
 
   // Use interactions hook
@@ -97,6 +108,8 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
         setShowGrid={setShowGrid}
         canvasColor={canvasColor}
         setCanvasColor={setCanvasColor}
+        renderScale={renderScale}
+        setRenderScale={setRenderScale}
       />
 
       {/* Zoom hint */}
@@ -118,8 +131,8 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
       >
         <canvas
           ref={canvasRef}
-          width={CANVAS_WIDTH * RENDER_SCALE}
-          height={CANVAS_HEIGHT * RENDER_SCALE}
+          width={CANVAS_WIDTH * renderScale}
+          height={CANVAS_HEIGHT * renderScale}
           className="w-full h-full object-contain"
           style={{
             backgroundColor: canvasColor,

@@ -6,7 +6,7 @@ interface PlayheadProps {
 }
 
 export default function Playhead({ containerHeight }: PlayheadProps) {
-  const { playheadPosition, zoom, setPlayhead } = useTimelineStore();
+  const { playheadPosition, zoom, setPlayhead, setUserSeeking } = useTimelineStore();
   const [isDragging, setIsDragging] = useState(false);
   const playheadRef = useRef<HTMLDivElement>(null);
 
@@ -15,6 +15,7 @@ export default function Playhead({ containerHeight }: PlayheadProps) {
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsDragging(true);
+    setUserSeeking(true);
   };
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function Playhead({ containerHeight }: PlayheadProps) {
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      setUserSeeking(false);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -41,7 +43,7 @@ export default function Playhead({ containerHeight }: PlayheadProps) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, zoom, setPlayhead]);
+  }, [isDragging, zoom, setPlayhead, setUserSeeking]);
 
   // Format time for display
   const formatTime = (seconds: number) => {

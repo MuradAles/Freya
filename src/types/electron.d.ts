@@ -17,6 +17,14 @@ export interface ElectronAPI {
   generateThumbnail: (filePath: string, type: string) => Promise<string | null>;
   readFileAsDataURL: (filePath: string) => Promise<string | null>;
   getMediaDuration: (filePath: string) => Promise<number>;
+  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string) => Promise<{ success: boolean }>;
+  getRecordingSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>;
+  saveRecording: (blobData: string, filePath: string) => Promise<{ success: boolean; filePath?: string; fileSize?: number; error?: string }>;
+  showRecordingSaveDialog: (defaultFilename: string) => Promise<string | null>;
+  convertRecordingToMP4: (webmPath: string, mp4Path: string) => Promise<{ success: boolean; error?: string }>;
+  deleteFile: (filePath: string) => Promise<void>;
+  on: (channel: string, callback: (...args: any[]) => void) => void;
+  off: (channel: string, callback: (...args: any[]) => void) => void;
 }
 
 declare global {

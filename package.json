@@ -2,7 +2,7 @@
   "name": "freya",
   "productName": "freya",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Freya - Professional Video Editor",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",

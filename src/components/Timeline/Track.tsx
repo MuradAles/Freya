@@ -75,6 +75,8 @@ export default function Track({ track, containerWidth }: TrackProps) {
   };
 
   const createClip = (assetId: string, startTime: number, duration: number) => {
+    const media = getMediaById(assetId);
+    
     const newClip: TimelineClipType = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       assetId,
@@ -82,7 +84,8 @@ export default function Track({ track, containerWidth }: TrackProps) {
       startTime,
       duration,
       trimStart: 0,
-      trimEnd: duration,
+      // trimEnd should be the absolute end position in source, which is just the clip duration when starting from 0
+      trimEnd: media?.duration || duration,
       speed: 1,
       volume: 1,
       fadeIn: 0,

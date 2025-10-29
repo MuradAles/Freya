@@ -28,7 +28,7 @@ export const useCanvasRendering = ({
   CANVAS_HEIGHT,
   RENDER_SCALE,
 }: UseCanvasRenderingProps) => {
-  const { tracks, selectedClipIds } = useTimelineStore();
+  const { tracks, selectedClipIds, isUserSeeking } = useTimelineStore();
   const { getMediaById } = useMediaStore();
 
   // Video/audio element refs
@@ -40,11 +40,27 @@ export const useCanvasRendering = ({
   // Performance optimization: Cache temporary canvases for step-down scaling
   const tempCanvasCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
 
+  // Performance: Use refs for frequently changing values to avoid useEffect recreation
+  const playheadPositionRef = useRef(playheadPosition);
+  const isPlayingRef = useRef(isPlaying);
+  const showGridRef = useRef(showGrid);
+  const canvasColorRef = useRef(canvasColor);
+
+  // Performance: Track if render loop is active
+  const isRenderLoopActiveRef = useRef(false);
+
+  // Seek throttling: Only seek every N frames when dragging to reduce decoder thrashing
+  const seekFrameCounterRef = useRef(0);
+  const SEEK_THROTTLE_FRAMES = 3; // Seek every 3 frames during drag
+  const isUserSeekingRef = useRef(isUserSeeking);
+
   // Track previous render state to skip unnecessary re-renders
   const lastRenderStateRef = useRef<{
     playheadPosition: number;
     clipStates: string;
     isPlaying: boolean;
+    canvasColor: string;
+    showGrid: boolean;
   } | null>(null);
 
   // FPS tracking
@@ -67,14 +83,49 @@ export const useCanvasRendering = ({
     selectedClipIdsRef.current = selectedClipIds;
   }, [tracks, getMediaById, selectedClipIds]);
 
-  // Get all clips at playhead
+  // Ref to hold render function so we can call it from outside
+  const renderFuncRef = useRef<(() => void) | null>(null);
+
+  // Update refs when props change (without triggering main render useEffect)
+  useEffect(() => {
+    playheadPositionRef.current = playheadPosition;
+    isPlayingRef.current = isPlaying;
+    showGridRef.current = showGrid;
+    canvasColorRef.current = canvasColor;
+    isUserSeekingRef.current = isUserSeeking;
+
+    // Mark that we need a render
+    pendingRenderRef.current = true;
+
+    // If render loop is not active, restart it
+    if (!isRenderLoopActiveRef.current && renderFuncRef.current) {
+      isRenderLoopActiveRef.current = true;
+      animationFrameRef.current = requestAnimationFrame(renderFuncRef.current);
+    }
+  }, [playheadPosition, isPlaying, showGrid, canvasColor, isUserSeeking]);
+
+  // Monitor pendingRenderRef to restart loop when videos load asynchronously
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // If we have a pending render but the loop is inactive, restart it
+      if (pendingRenderRef.current && !isRenderLoopActiveRef.current && renderFuncRef.current) {
+        isRenderLoopActiveRef.current = true;
+        animationFrameRef.current = requestAnimationFrame(renderFuncRef.current);
+      }
+    }, 50); // Check every 50ms
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Get all clips at playhead - use ref for current playhead position
   const getClipsAtPlayhead = () => {
     const clips: Array<{ clip: any; media: any; trackOrder: number }> = [];
+    const currentPlayhead = playheadPositionRef.current;
 
     tracksRef.current.forEach(track => {
       if (!track.visible) return;
       track.clips.forEach(clip => {
-        if (playheadPosition >= clip.startTime && playheadPosition < clip.startTime + clip.duration) {
+        if (currentPlayhead >= clip.startTime && currentPlayhead < clip.startTime + clip.duration) {
           const media = getMediaByIdRef.current(clip.assetId);
           if (media) {
             clips.push({ clip, media, trackOrder: track.order });
@@ -125,7 +176,13 @@ export const useCanvasRendering = ({
             });
 
             // Force a render when video metadata is loaded (for first render)
+            // This is critical for initial loads where videos load asynchronously
             video.addEventListener('loadedmetadata', () => {
+              pendingRenderRef.current = true;
+            });
+            
+            // Also trigger render when video can play (even better)
+            video.addEventListener('canplay', () => {
               pendingRenderRef.current = true;
             });
 
@@ -195,6 +252,12 @@ export const useCanvasRendering = ({
     ctx.globalCompositeOperation = 'source-over';
 
     const render = () => {
+      // Get current values from refs
+      const currentPlayhead = playheadPositionRef.current;
+      const currentIsPlaying = isPlayingRef.current;
+      const currentShowGrid = showGridRef.current;
+      const currentCanvasColor = canvasColorRef.current;
+
       // FPS calculation
       const now = performance.now();
       fpsFrameTimesRef.current.push(now);
@@ -220,11 +283,22 @@ export const useCanvasRendering = ({
 
       const clipsAtPlayhead = getClipsAtPlayhead();
 
+      // Check if any videos are ready to be drawn
+      let hasVideoData = false;
+      for (const { clip } of clipsAtPlayhead) {
+        const video = videoLayersRef.current.get(clip.id);
+        if (video && video.readyState >= 1 && video.videoWidth > 0) {
+          hasVideoData = true;
+          break;
+        }
+      }
+
       // Skip re-render if nothing changed (when not playing and not dragging)
-      // BUT: Always render the first frame, or when pending render is set
+      // BUT: Always render the first frame, or when pending render is set, or when video data is ready
       const isFirstRender = !lastRenderStateRef.current;
       
-      if (!isPlaying && !isFirstRender && !pendingRenderRef.current) {
+      // If paused and not first render and no pending render and clips exist, check for changes
+      if (!currentIsPlaying && !isFirstRender && !pendingRenderRef.current && !hasVideoData) {
         const currentClipStates = JSON.stringify(
           clipsAtPlayhead.map(({ clip }) => ({
             id: clip.id,
@@ -234,34 +308,53 @@ export const useCanvasRendering = ({
         );
 
         const currentState = {
-          playheadPosition,
+          playheadPosition: currentPlayhead,
           clipStates: currentClipStates,
-          isPlaying,
+          isPlaying: currentIsPlaying,
+          canvasColor: currentCanvasColor,
+          showGrid: currentShowGrid,
         };
 
         const shouldRender =
           lastRenderStateRef.current.playheadPosition !== currentState.playheadPosition ||
           lastRenderStateRef.current.clipStates !== currentState.clipStates ||
           lastRenderStateRef.current.isPlaying !== currentState.isPlaying ||
+          lastRenderStateRef.current.canvasColor !== currentState.canvasColor ||
+          lastRenderStateRef.current.showGrid !== currentState.showGrid ||
           seekingVideosRef.current.size > 0;
 
         if (!shouldRender) {
-          animationFrameRef.current = requestAnimationFrame(render);
+          // CONDITIONAL RENDERING: Stop loop when nothing changed and paused
+          isRenderLoopActiveRef.current = false;
+          animationFrameRef.current = undefined;
           return;
         }
 
         lastRenderStateRef.current = currentState;
-      } else if (isFirstRender) {
-        // Initialize state on first render
+      } else if (isFirstRender || hasVideoData) {
+        // Initialize state on first render or when video data becomes available
+        const currentClipStates = JSON.stringify(
+          clipsAtPlayhead.map(({ clip }) => ({
+            id: clip.id,
+            position: clip.position,
+            rotation: clip.position?.rotation || 0,
+          }))
+        );
+
         lastRenderStateRef.current = {
-          playheadPosition,
-          clipStates: '',
-          isPlaying,
+          playheadPosition: currentPlayhead,
+          clipStates: isFirstRender ? '' : currentClipStates,
+          isPlaying: currentIsPlaying,
+          canvasColor: currentCanvasColor,
+          showGrid: currentShowGrid,
         };
       }
 
+      // Mark loop as active
+      isRenderLoopActiveRef.current = true;
+
       // Clear canvas with background color
-      ctx.fillStyle = canvasColor;
+      ctx.fillStyle = currentCanvasColor;
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       // Draw canvas border
@@ -270,7 +363,7 @@ export const useCanvasRendering = ({
       ctx.strokeRect(1, 1, CANVAS_WIDTH - 2, CANVAS_HEIGHT - 2);
 
       // Draw grid overlay
-      if (showGrid) {
+      if (currentShowGrid) {
         ctx.strokeStyle = '#333333';
         ctx.lineWidth = 1;
 
@@ -306,7 +399,7 @@ export const useCanvasRendering = ({
 
       // Sync and play clips at current playhead
       clipsAtPlayhead.forEach(({ clip, media }) => {
-        const timeInClip = playheadPosition - clip.startTime;
+        const timeInClip = currentPlayhead - clip.startTime;
         const actualTime = clip.trimStart + timeInClip;
 
         // Sync video time
@@ -317,16 +410,24 @@ export const useCanvasRendering = ({
               video.muted = true;
             }
 
-            const seekThreshold = isPlaying ? 0.15 : 0.1;
             const timeDiff = Math.abs(video.currentTime - actualTime);
+            
+            // Seek throttling: During user drag (scrubbing), only seek every N frames
+            // This prevents video decoder thrashing when dragging rapidly
+            const shouldSeek = isUserSeekingRef.current
+              ? (seekFrameCounterRef.current % SEEK_THROTTLE_FRAMES === 0 && timeDiff > 0.2)
+              : (timeDiff > 0.1);
 
-            if (timeDiff > seekThreshold) {
+            if (shouldSeek) {
               video.currentTime = actualTime;
+              if (isUserSeekingRef.current) {
+                seekFrameCounterRef.current++;
+              }
             }
 
             video.playbackRate = clip.speed;
 
-            if (isPlaying) {
+            if (currentIsPlaying) {
               if (video.paused) {
                 video.play().catch(() => {});
               }
@@ -342,7 +443,7 @@ export const useCanvasRendering = ({
         if (media.type === 'video' || media.type === 'audio') {
           const audio = audioElementsRef.current.get(clip.id);
           if (audio) {
-            if (isPlaying) {
+            if (currentIsPlaying) {
               const seekThreshold = 0.15;
               if (Math.abs(audio.currentTime - actualTime) > seekThreshold) {
                 audio.currentTime = actualTime;
@@ -481,14 +582,18 @@ export const useCanvasRendering = ({
       animationFrameRef.current = requestAnimationFrame(render);
     };
 
+    // Store render function so it can be restarted from the update useEffect
+    renderFuncRef.current = render;
+
     render();
 
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      isRenderLoopActiveRef.current = false;
     };
-  }, [playheadPosition, isPlaying, showGrid, canvasColor, canvasRef, CANVAS_WIDTH, CANVAS_HEIGHT, RENDER_SCALE]);
+  }, [canvasRef, CANVAS_WIDTH, CANVAS_HEIGHT, RENDER_SCALE]); // Removed playheadPosition, isPlaying, showGrid, canvasColor - now using refs!
 
   // Cleanup on unmount
   useEffect(() => {

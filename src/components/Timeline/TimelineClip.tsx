@@ -154,22 +154,39 @@ export default function TimelineClip({ clip, trackId }: TimelineClipProps) {
         const newTrimStart = Math.max(0, clip.trimStart + trimChange);
         const newDuration = clip.duration - trimChange;
 
-        if (newDuration > 0.1 && newTrimStart < media?.duration!) {
+        // For video/audio, ensure we don't extend beyond source duration
+        const isVideoAudio = media && (media.type === 'video' || media.type === 'audio');
+        const wouldExceedSource = isVideoAudio && (newTrimStart + newDuration > media.duration);
+
+        if (newDuration > 0.1 && !wouldExceedSource) {
+          // trimEnd should remain the same absolute position in source when trimming from left
+          // unless we're also adjusting it (which we're not in this case)
           updateClip(clip.id, {
             startTime: newStartTime,
             trimStart: newTrimStart,
             duration: newDuration
+            // trimEnd stays the same - it represents the absolute end position in source
           });
         }
       } else if (isResizingRight) {
         // Trim right (adjust trimEnd and duration)
         const newDuration = Math.max(0.1, clip.duration + deltaTime);
-        const maxDuration = (media?.duration || 0) - clip.trimStart;
+        // For video/audio, limit to source duration
+        const trimStart = clip.trimStart ?? 0;
+        
+        // Maximum duration is the remaining source after trimStart
+        const maxDuration = media?.duration ? media.duration - trimStart : newDuration;
+        
+        // Only limit for video and audio, not for images
+        const isVideoAudio = media && (media.type === 'video' || media.type === 'audio');
+        const canExtend = !isVideoAudio || newDuration <= maxDuration;
 
-        if (newDuration <= maxDuration) {
+        if (canExtend) {
+          // trimEnd is the absolute position in source
+          const newTrimEnd = trimStart + newDuration;
           updateClip(clip.id, {
             duration: newDuration,
-            trimEnd: clip.trimStart + newDuration
+            trimEnd: newTrimEnd
           });
         }
       }
