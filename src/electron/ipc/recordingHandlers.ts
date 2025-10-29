@@ -71,13 +71,22 @@ export function setupRecordingHandlers() {
   // Show save dialog for recording
   ipcMain.handle('recording:showSaveDialog', async (_, defaultFilename: string) => {
     try {
+      // Determine file type from filename extension
+      const isAudio = defaultFilename.toLowerCase().endsWith('.mp3');
+
+      const filters = isAudio ? [
+        { name: 'MP3 Audio', extensions: ['mp3'] },
+        { name: 'WAV Audio', extensions: ['wav'] },
+        { name: 'All Files', extensions: ['*'] }
+      ] : [
+        { name: 'MP4 Video', extensions: ['mp4'] },
+        { name: 'WebM Video', extensions: ['webm'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+
       const result = await dialog.showSaveDialog({
         defaultPath: defaultFilename,
-        filters: [
-          { name: 'MP4 Video', extensions: ['mp4'] }, // Save as MP4
-          { name: 'WebM Video', extensions: ['webm'] },
-          { name: 'All Files', extensions: ['*'] }
-        ]
+        filters: filters
       });
 
       if (result.canceled) {
@@ -132,6 +141,57 @@ export function setupRecordingHandlers() {
           })
           .on('end', () => {
             console.log('✅ WebM → MP4 conversion complete');
+            event.sender.send('recording:compressionProgress', 100);
+            resolve({ success: true });
+          })
+          .on('error', (err) => {
+            console.error('❌ FFmpeg conversion error:', err.message);
+            resolve({ success: false, error: err.message });
+          })
+          .run();
+      });
+    } catch (error) {
+      console.error('Error converting recording:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Convert WebM recording to MP3 (audio-only)
+  ipcMain.handle('recording:convertToMP3', async (event, webmPath: string, mp3Path: string, quality: 'high' | 'medium' | 'low' = 'medium') => {
+    try {
+      console.log('🎵 Converting WebM to MP3...');
+      console.log('   Source:', webmPath);
+      console.log('   Target:', mp3Path);
+      console.log('   Quality:', quality);
+
+      // Map quality to audio bitrate (kbps)
+      const bitrateMap = {
+        high: '320k',   // Highest quality MP3
+        medium: '192k', // Good quality (default)
+        low: '128k'     // Acceptable quality, smallest size
+      };
+      const bitrate = bitrateMap[quality];
+
+      return new Promise((resolve) => {
+        ffmpeg(webmPath)
+          .output(mp3Path)
+          .audioCodec('libmp3lame')
+          .audioBitrate(bitrate)
+          .outputOptions([
+            '-q:a', '2'  // MP3 quality (0-9, lower is better)
+          ])
+          .on('start', (cmdLine) => {
+            console.log('🔥 FFmpeg command:', cmdLine);
+          })
+          .on('progress', (progress) => {
+            // Send progress to renderer
+            if (progress.percent) {
+              event.sender.send('recording:compressionProgress', progress.percent);
+              console.log(`⏳ Compression progress: ${progress.percent.toFixed(1)}%`);
+            }
+          })
+          .on('end', () => {
+            console.log('✅ WebM → MP3 conversion complete');
             event.sender.send('recording:compressionProgress', 100);
             resolve({ success: true });
           })

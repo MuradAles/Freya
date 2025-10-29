@@ -3,6 +3,7 @@ import { Film, Plus, Minus, Trash2 } from 'lucide-react';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useMediaStore } from '../../store/mediaStore';
 import ExportDialog, { type ExportSettings } from '../Dialogs/ExportDialog';
+import ClipContextMenu from './ClipContextMenu';
 import type { TimelineClip } from '../../types/timeline';
 
 const TRACK_HEIGHT = 40;
@@ -23,6 +24,8 @@ export default function TimelineNew() {
   const addClip = useTimelineStore(state => state.addClip);
   const deleteClip = useTimelineStore(state => state.deleteClip);
   const setUserSeeking = useTimelineStore(state => state.setUserSeeking);
+  const moveClip = useTimelineStore(state => state.moveClip);
+  const splitClip = useTimelineStore(state => state.splitClip);
   
   const { getMediaById, mediaLibrary } = useMediaStore();
   
@@ -69,18 +72,31 @@ export default function TimelineNew() {
   const [dragState, setDragState] = useState<{
     type: 'move' | 'trim-left' | 'trim-right' | null;
     clipId: string | null;
+    sourceTrackId: string | null;
     startX: number;
+    startY: number;
     startTime: number;
     startDuration: number;
     startTrimStart: number;
   }>({
     type: null,
     clipId: null,
+    sourceTrackId: null,
     startX: 0,
+    startY: 0,
     startTime: 0,
     startDuration: 0,
     startTrimStart: 0,
   });
+  
+  const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    clipId: string;
+  } | null>(null);
 
   // Track viewport width
   useEffect(() => {
@@ -242,24 +258,66 @@ export default function TimelineNew() {
     const track = tracks[trackIndex];
     if (!track) return;
 
+    // Calculate initial size preserving aspect ratio
+    // Canvas is 1920x1080, we want clips to be reasonably sized (e.g., 50% of canvas width)
+    const CANVAS_WIDTH = 1920;
+    const CANVAS_HEIGHT = 1080;
+    const CANVAS_ASPECT = CANVAS_WIDTH / CANVAS_HEIGHT; // 16:9 = 1.778
+    const targetSizePercent = 0.5; // Target 50% of canvas dimensions
+
+    let clipWidth = 0.5;
+    let clipHeight = 0.5;
+
+    if (media.width && media.height) {
+      const mediaAspect = media.width / media.height;
+
+      // Target actual pixel size (e.g., 50% of canvas width in pixels)
+      const targetPixelWidth = targetSizePercent * CANVAS_WIDTH;
+      const targetPixelHeight = targetPixelWidth / mediaAspect;
+
+      // Convert back to normalized coordinates
+      clipWidth = targetPixelWidth / CANVAS_WIDTH;
+      clipHeight = targetPixelHeight / CANVAS_HEIGHT;
+
+      // If height exceeds 90% of canvas, scale down proportionally
+      if (clipHeight > 0.9) {
+        clipHeight = 0.9;
+        const actualPixelHeight = clipHeight * CANVAS_HEIGHT;
+        const actualPixelWidth = actualPixelHeight * mediaAspect;
+        clipWidth = actualPixelWidth / CANVAS_WIDTH;
+      }
+
+      // If width exceeds 90% of canvas, scale down proportionally
+      if (clipWidth > 0.9) {
+        clipWidth = 0.9;
+        const actualPixelWidth = clipWidth * CANVAS_WIDTH;
+        const actualPixelHeight = actualPixelWidth / mediaAspect;
+        clipHeight = actualPixelHeight / CANVAS_HEIGHT;
+      }
+    }
+
+    // Center the clip
+    const clipX = (1 - clipWidth) / 2;
+    const clipY = (1 - clipHeight) / 2;
+
     const newClip: TimelineClip = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       assetId: mediaId,
       trackId: track.id,
       startTime,
-      duration: media.duration,
+      duration: media.type === 'image' ? 10 : media.duration,
       trimStart: 0,
-      trimEnd: media.duration,
+      trimEnd: media.type === 'image' ? 10 : media.duration,
       speed: 1,
       volume: 1,
       fadeIn: 0,
       fadeOut: 0,
-      // Add default position to make clips interactive on canvas
+      // Add default position with preserved aspect ratio
       position: {
-        x: 0.25,   // 25% from left
-        y: 0.25,   // 25% from top
-        width: 0.5,   // 50% of canvas width
-        height: 0.5,  // 50% of canvas height
+        x: clipX,
+        y: clipY,
+        width: clipWidth,
+        height: clipHeight,
         rotation: 0,
         zIndex: 0
       }
@@ -284,6 +342,42 @@ export default function TimelineNew() {
     } else {
       selectClips([clipId]);
     }
+  };
+
+  // Handle context menu on clip
+  const handleClipContextMenu = (e: React.MouseEvent, clipId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      clipId,
+    });
+    // Also select the clip if not already selected
+    if (!selectedClipIds.includes(clipId)) {
+      selectClips([clipId]);
+    }
+  };
+
+  // Check if playhead is within a clip for enabling split option
+  const isPlayheadInClip = (clip: TimelineClip): boolean => {
+    return playheadPosition > clip.startTime && playheadPosition < clip.startTime + clip.duration;
+  };
+
+  // Handle split at playhead
+  const handleSplitAtPlayhead = () => {
+    if (!contextMenu) return;
+    const clipId = contextMenu.clipId;
+    splitClip(clipId, playheadPosition);
+    setContextMenu(null);
+  };
+
+  // Handle delete clip
+  const handleDeleteClip = () => {
+    if (!contextMenu) return;
+    const clipId = contextMenu.clipId;
+    deleteClip(clipId);
+    setContextMenu(null);
   };
 
   // Handle delete key press
@@ -429,12 +523,36 @@ export default function TimelineNew() {
     setDragState({
       type,
       clipId: clip.id,
+      sourceTrackId: clip.trackId,
       startX: e.clientX,
+      startY: e.clientY,
       startTime: clip.startTime,
       startDuration: clip.duration,
       startTrimStart: clip.trimStart,
     });
+    setHoveredTrackId(null); // Reset hover state
   };
+  
+  // Helper function to get which track the mouse is over
+  const getTrackAtY = useCallback((clientY: number): string | null => {
+    if (!containerRef.current) return null;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const y = clientY - containerRect.top;
+    
+    // Account for ruler height
+    const trackAreaY = y - RULER_HEIGHT;
+    if (trackAreaY < 0) return null;
+    
+    // Calculate which track based on track index
+    const trackIndex = Math.floor(trackAreaY / TRACK_HEIGHT);
+    const currentTracks = useTimelineStore.getState().tracks;
+    if (trackIndex >= 0 && trackIndex < currentTracks.length) {
+      return currentTracks[trackIndex].id;
+    }
+    
+    return null;
+  }, []);
 
   // Handle mouse move
   useEffect(() => {
@@ -456,11 +574,25 @@ export default function TimelineNew() {
       const deltaTime = deltaX / zoom;
 
       if (dragState.type === 'move') {
-        const rawNewStartTime = Math.max(0, dragState.startTime + deltaTime);
-        if (dragState.clipId) {
-          // Use collision detection and snapping
-          const bestPosition = findBestPosition(dragState.clipId, rawNewStartTime, dragState.startDuration);
-          updateClip(dragState.clipId, { startTime: bestPosition });
+        // Detect which track we're hovering over
+        const currentTrackId = getTrackAtY(e.clientY);
+        setHoveredTrackId(currentTrackId);
+        
+        // If hovering over a different track, we'll handle the move on mouse up
+        // For now, just update the position in the source track for visual feedback
+        if (dragState.clipId && dragState.sourceTrackId) {
+          const rawNewStartTime = Math.max(0, dragState.startTime + deltaTime);
+          
+          // If we're still on the same track, update normally
+          if (currentTrackId === dragState.sourceTrackId) {
+            const bestPosition = findBestPosition(dragState.clipId, rawNewStartTime, dragState.startDuration);
+            updateClip(dragState.clipId, { startTime: bestPosition });
+          } else {
+            // If on a different track, temporarily update the visual position
+            // The actual move will happen on mouse up
+            const bestPosition = Math.max(0, rawNewStartTime);
+            updateClip(dragState.clipId, { startTime: bestPosition });
+          }
         }
       } else if (dragState.type === 'trim-left') {
         const newTrimStart = Math.max(0, dragState.startTrimStart + deltaTime);
@@ -538,15 +670,58 @@ export default function TimelineNew() {
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      const current_state = useTimelineStore.getState();
+      const updateClip = current_state.updateClip;
+      const moveClipFn = current_state.moveClip;
+      
+      if (dragState.type === 'move' && dragState.clipId && dragState.sourceTrackId) {
+        // Get the final position
+        const deltaX = e.clientX - dragState.startX;
+        const deltaTime = deltaX / zoom;
+        const rawNewStartTime = Math.max(0, dragState.startTime + deltaTime);
+        
+        // Get the track we're hovering over
+        const targetTrackId = getTrackAtY(e.clientY);
+        
+        // If we moved to a different track, use moveClip
+        if (targetTrackId && targetTrackId !== dragState.sourceTrackId) {
+          const targetTrack = current_state.tracks.find(t => t.id === targetTrackId);
+          if (targetTrack) {
+            const calculatedStartTime = rawNewStartTime;
+            
+            // Check for overlaps in the target track
+            const wouldOverlapInTarget = targetTrack.clips.some(otherClip => {
+              if (otherClip.id === dragState.clipId) return false;
+              const otherEnd = otherClip.startTime + otherClip.duration;
+              const newEnd = calculatedStartTime + dragState.startDuration;
+              return calculatedStartTime < otherEnd && newEnd > otherClip.startTime;
+            });
+            
+            if (!wouldOverlapInTarget) {
+              // Move the clip to the new track
+              moveClipFn(dragState.clipId, targetTrackId, calculatedStartTime);
+            }
+            // If it would overlap, don't move (clip stays in original track)
+          }
+        } else if (!targetTrackId || targetTrackId === dragState.sourceTrackId) {
+          // Still on the same track, just update position normally
+          const bestPosition = findBestPosition(dragState.clipId, rawNewStartTime, dragState.startDuration);
+          updateClip(dragState.clipId, { startTime: bestPosition });
+        }
+      }
+      
       setDragState({
         type: null,
         clipId: null,
+        sourceTrackId: null,
         startX: 0,
+        startY: 0,
         startTime: 0,
         startDuration: 0,
         startTrimStart: 0,
       });
+      setHoveredTrackId(null);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -556,7 +731,7 @@ export default function TimelineNew() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState.type, dragState.clipId, dragState.startX, dragState.startTime, dragState.startDuration, dragState.startTrimStart, zoom]);
+  }, [dragState.type, dragState.clipId, dragState.startX, dragState.startY, dragState.startTime, dragState.startDuration, dragState.startTrimStart, dragState.sourceTrackId, zoom, findBestPosition, getTrackAtY]);
 
   return (
     <div className="w-full h-full bg-gray-800 border-t border-gray-700 flex flex-col select-none">
@@ -704,7 +879,11 @@ export default function TimelineNew() {
               {tracks.map((track, trackIndex) => (
                 <div
                   key={track.id}
-                  className="relative bg-gray-850 border-b border-gray-700"
+                  className={`relative border-b border-gray-700 transition-colors ${
+                    hoveredTrackId === track.id && dragState.type === 'move' && dragState.sourceTrackId !== track.id
+                      ? 'bg-purple-900/30 ring-2 ring-purple-500 ring-inset'
+                      : 'bg-gray-850'
+                  }`}
                   style={{ height: TRACK_HEIGHT }}
                   onDrop={(e) => handleDrop(e, trackIndex)}
                   onDragOver={handleDragOver}
@@ -751,6 +930,7 @@ export default function TimelineNew() {
                         }}
                         onClick={(e) => handleClipClick(e, clip.id)}
                         onMouseDown={(e) => handleClipMouseDown(e, clip, 'move')}
+                        onContextMenu={(e) => handleClipContextMenu(e, clip.id)}
                       >
                         {/* Thumbnail */}
                         {media.thumbnail && (
@@ -849,6 +1029,28 @@ export default function TimelineNew() {
           </div>
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (() => {
+        const clip = tracks
+          .flatMap(track => track.clips)
+          .find(c => c.id === contextMenu.clipId);
+        
+        if (!clip) return null;
+        
+        const canSplit = isPlayheadInClip(clip);
+        
+        return (
+          <ClipContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            onSplit={handleSplitAtPlayhead}
+            onDelete={handleDeleteClip}
+            canSplit={canSplit}
+          />
+        );
+      })()}
 
     </div>
   );

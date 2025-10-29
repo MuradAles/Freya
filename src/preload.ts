@@ -40,7 +40,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRecordingSources: () => ipcRenderer.invoke('recording:getSources'),
   saveRecording: (blobData: string, filePath: string) => ipcRenderer.invoke('recording:saveFile', blobData, filePath),
   showRecordingSaveDialog: (defaultFilename: string) => ipcRenderer.invoke('recording:showSaveDialog', defaultFilename),
-  convertRecordingToMP4: (webmPath: string, mp4Path: string) => ipcRenderer.invoke('recording:convertToMP4', webmPath, mp4Path),
+  convertRecordingToMP4: (webmPath: string, mp4Path: string, quality?: 'high' | 'medium' | 'low', frameRate?: number) =>
+    ipcRenderer.invoke('recording:convertToMP4', webmPath, mp4Path, quality, frameRate),
+  convertRecordingToMP3: (webmPath: string, mp3Path: string, quality?: 'high' | 'medium' | 'low') =>
+    ipcRenderer.invoke('recording:convertToMP3', webmPath, mp3Path, quality),
   deleteFile: (filePath: string) => ipcRenderer.invoke('recording:deleteFile', filePath),
 
   // System audio loopback (electron-audio-loopback)

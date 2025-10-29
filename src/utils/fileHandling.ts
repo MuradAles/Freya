@@ -71,7 +71,7 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
   let duration = 0;
   let width = 0;
   let height = 0;
-  
+
   // Get duration for video/audio files using native Electron API
   if (type === 'video' || type === 'audio') {
     console.log('⏱️  Getting media duration...');
@@ -80,6 +80,19 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
       console.log('⏱️  Media duration:', duration);
     } catch (error) {
       console.error('Could not get media duration:', error);
+    }
+  }
+
+  // Get dimensions for images
+  if (type === 'image') {
+    console.log('📏 Getting image dimensions...');
+    try {
+      const dimensions = await getImageDimensions(filePath);
+      width = dimensions.width;
+      height = dimensions.height;
+      console.log(`📏 Image dimensions: ${width}×${height}`);
+    } catch (error) {
+      console.error('Could not get image dimensions:', error);
     }
   }
   
@@ -102,5 +115,28 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Get dimensions of an image file
+ */
+async function getImageDimensions(filePath: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => {
+      resolve({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+    };
+
+    img.onerror = () => {
+      reject(new Error('Failed to load image'));
+    };
+
+    // Convert file path to file URL
+    img.src = pathToFileURL(filePath);
+  });
 }
 

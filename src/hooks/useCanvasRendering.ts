@@ -31,8 +31,9 @@ export const useCanvasRendering = ({
   const { tracks, selectedClipIds, isUserSeeking } = useTimelineStore();
   const { getMediaById } = useMediaStore();
 
-  // Video/audio element refs
+  // Video/audio/image element refs
   const videoLayersRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const imageLayersRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const seekingVideosRef = useRef<Set<string>>(new Set());
   const pendingRenderRef = useRef<boolean>(false);
@@ -154,7 +155,7 @@ export const useCanvasRendering = ({
       const fileUrl = pathToFileURL(media.path);
 
         // Setup video element
-        if (media.type === 'video' || media.type === 'image') {
+        if (media.type === 'video') {
           if (!videoLayersRef.current.has(clip.id)) {
             const video = document.createElement('video');
             video.crossOrigin = 'anonymous';
@@ -175,7 +176,7 @@ export const useCanvasRendering = ({
             video.addEventListener('loadedmetadata', () => {
               pendingRenderRef.current = true;
             });
-            
+
             // Also trigger render when video can play (even better)
             video.addEventListener('canplay', () => {
               pendingRenderRef.current = true;
@@ -184,14 +185,34 @@ export const useCanvasRendering = ({
             videoLayersRef.current.set(clip.id, video);
           }
 
-        const video = videoLayersRef.current.get(clip.id)!;
-        if (!video.muted) {
-          video.muted = true;
+          const video = videoLayersRef.current.get(clip.id)!;
+          if (!video.muted) {
+            video.muted = true;
+          }
+          if (video.src !== fileUrl && fileUrl) {
+            video.src = fileUrl;
+          }
         }
-        if (video.src !== fileUrl && fileUrl) {
-          video.src = fileUrl;
+
+        // Setup image element
+        if (media.type === 'image') {
+          if (!imageLayersRef.current.has(clip.id)) {
+            const img = document.createElement('img');
+            img.crossOrigin = 'anonymous';
+
+            // Force a render when image is loaded
+            img.addEventListener('load', () => {
+              pendingRenderRef.current = true;
+            });
+
+            imageLayersRef.current.set(clip.id, img);
+          }
+
+          const img = imageLayersRef.current.get(clip.id)!;
+          if (img.src !== fileUrl && fileUrl) {
+            img.src = fileUrl;
+          }
         }
-      }
 
       // Setup audio element
       if (media.type === 'video' || media.type === 'audio') {
@@ -214,6 +235,13 @@ export const useCanvasRendering = ({
         video.pause();
         video.src = '';
         videoLayersRef.current.delete(id);
+      }
+    });
+
+    imageLayersRef.current.forEach((img, id) => {
+      if (!allClipIds.has(id)) {
+        img.src = '';
+        imageLayersRef.current.delete(id);
       }
     });
 
@@ -256,12 +284,19 @@ export const useCanvasRendering = ({
       const now = performance.now();
       const clipsAtPlayhead = getClipsAtPlayhead();
 
-      // Check if any videos are ready to be drawn
-      let hasVideoData = false;
+      // Check if any videos or images are ready to be drawn
+      let hasMediaData = false;
       for (const { clip } of clipsAtPlayhead) {
         const video = videoLayersRef.current.get(clip.id);
+        const img = imageLayersRef.current.get(clip.id);
+
         if (video && video.readyState >= 1 && video.videoWidth > 0) {
-          hasVideoData = true;
+          hasMediaData = true;
+          break;
+        }
+
+        if (img && img.complete && img.naturalWidth > 0) {
+          hasMediaData = true;
           break;
         }
       }
@@ -271,7 +306,7 @@ export const useCanvasRendering = ({
       const isFirstRender = !lastRenderStateRef.current;
       
       // If paused and not first render and no pending render and clips exist, check for changes
-      if (!currentIsPlaying && !isFirstRender && !pendingRenderRef.current && !hasVideoData) {
+      if (!currentIsPlaying && !isFirstRender && !pendingRenderRef.current && !hasMediaData) {
         const currentClipStates = JSON.stringify(
           clipsAtPlayhead.map(({ clip }) => ({
             id: clip.id,
@@ -304,8 +339,8 @@ export const useCanvasRendering = ({
         }
 
         lastRenderStateRef.current = currentState;
-      } else if (isFirstRender || hasVideoData) {
-        // Initialize state on first render or when video data becomes available
+      } else if (isFirstRender || hasMediaData) {
+        // Initialize state on first render or when media data becomes available
         const currentClipStates = JSON.stringify(
           clipsAtPlayhead.map(({ clip }) => ({
             id: clip.id,
@@ -442,13 +477,29 @@ export const useCanvasRendering = ({
         pendingRenderRef.current = false;
       }
 
-      // Draw each video layer
+      // Draw each video/image layer
       clipsAtPlayhead.forEach(({ clip, media }) => {
-        const video = videoLayersRef.current.get(clip.id);
+        // Get the appropriate element (video or image)
+        const video = media.type === 'video' ? videoLayersRef.current.get(clip.id) : null;
+        const img = media.type === 'image' ? imageLayersRef.current.get(clip.id) : null;
+        const element = video || img;
 
-        if (!video || video.readyState < 1 || !video.videoWidth || !video.videoHeight) {
+        if (!element) {
           return;
         }
+
+        // Check readiness
+        if (video && (video.readyState < 1 || !video.videoWidth || !video.videoHeight)) {
+          return;
+        }
+
+        if (img && (!img.complete || !img.naturalWidth || !img.naturalHeight)) {
+          return;
+        }
+
+        // Get dimensions
+        const elementWidth = video ? video.videoWidth : img!.naturalWidth;
+        const elementHeight = video ? video.videoHeight : img!.naturalHeight;
 
         if (clip.position) {
           const { x, y, width, height, rotation } = clip.position;
@@ -463,31 +514,47 @@ export const useCanvasRendering = ({
             const centerY = actualY + actualHeight / 2;
             ctx.translate(centerX, centerY);
             ctx.rotate((rotation * Math.PI) / 180);
-            drawVideoHighQuality(ctx, video, -actualWidth / 2, -actualHeight / 2, actualWidth, actualHeight, clip.id, tempCanvasCacheRef.current);
+
+            // Draw video or image
+            if (video) {
+              drawVideoHighQuality(ctx, video, -actualWidth / 2, -actualHeight / 2, actualWidth, actualHeight, clip.id, tempCanvasCacheRef.current);
+            } else if (img) {
+              ctx.drawImage(img, -actualWidth / 2, -actualHeight / 2, actualWidth, actualHeight);
+            }
             ctx.restore();
           } else {
-            drawVideoHighQuality(ctx, video, actualX, actualY, actualWidth, actualHeight, clip.id, tempCanvasCacheRef.current);
+            // Draw video or image
+            if (video) {
+              drawVideoHighQuality(ctx, video, actualX, actualY, actualWidth, actualHeight, clip.id, tempCanvasCacheRef.current);
+            } else if (img) {
+              ctx.drawImage(img, actualX, actualY, actualWidth, actualHeight);
+            }
           }
         } else {
           // Full canvas - maintain aspect ratio
-          const videoAspect = video.videoWidth / video.videoHeight;
+          const mediaAspect = elementWidth / elementHeight;
           const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
 
           let drawWidth, drawHeight, drawX, drawY;
 
-          if (videoAspect > canvasAspect) {
+          if (mediaAspect > canvasAspect) {
             drawWidth = CANVAS_WIDTH;
-            drawHeight = CANVAS_WIDTH / videoAspect;
+            drawHeight = CANVAS_WIDTH / mediaAspect;
             drawX = 0;
             drawY = (CANVAS_HEIGHT - drawHeight) / 2;
           } else {
             drawHeight = CANVAS_HEIGHT;
-            drawWidth = CANVAS_HEIGHT * videoAspect;
+            drawWidth = CANVAS_HEIGHT * mediaAspect;
             drawX = (CANVAS_WIDTH - drawWidth) / 2;
             drawY = 0;
           }
 
-          drawVideoHighQuality(ctx, video, drawX, drawY, drawWidth, drawHeight, clip.id, tempCanvasCacheRef.current);
+          // Draw video or image
+          if (video) {
+            drawVideoHighQuality(ctx, video, drawX, drawY, drawWidth, drawHeight, clip.id, tempCanvasCacheRef.current);
+          } else if (img) {
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+          }
         }
       });
 
@@ -575,11 +642,15 @@ export const useCanvasRendering = ({
         video.pause();
         video.src = '';
       });
+      imageLayersRef.current.forEach(img => {
+        img.src = '';
+      });
       audioElementsRef.current.forEach(audio => {
         audio.pause();
         audio.src = '';
       });
       videoLayersRef.current.clear();
+      imageLayersRef.current.clear();
       audioElementsRef.current.clear();
       tempCanvasCacheRef.current.clear();
     };

@@ -469,5 +469,28 @@ const RESOLUTIONS = {
 };
 ```
 
+**Quality Settings:**
+```typescript
+const QUALITY_PRESETS = {
+  high: { crf: '18', description: 'Visually lossless, ~5-10 MB/min' },
+  medium: { crf: '23', description: 'High quality, ~2-5 MB/min' },
+  low: { crf: '28', description: 'Good quality, ~0.5-2 MB/min' },
+};
+
+const FRAME_RATES = [30, 60];
+```
+
+**FFmpeg Optimization:**
+```typescript
+// Optimized settings for faster export
+.outputOptions([
+  '-preset', 'medium',        // Fast encoding (was 'slow')
+  '-crf', crf,                // Quality based on user choice
+  '-r', targetFrameRate,      // Set target frame rate
+  '-movflags', '+faststart',  // Web-optimized MP4
+  '-threads', '0'             // Use all CPU cores
+])
+```
+
 **Pattern:** Centralized constants in `src/utils/constants.ts` (to be created)
 

@@ -341,10 +341,24 @@ export const useCanvasInteractions = ({
         },
       });
     } else if (dragModeRef.current === 'resize') {
-      const aspectRatio = (initialClipPositionRef.current.height || 0.5) / (initialClipPositionRef.current.width || 0.5);
-
       const initialWidth = initialClipPositionRef.current.width || 0.5;
       const initialHeight = initialClipPositionRef.current.height || 0.5;
+
+      // Get the actual media to calculate true aspect ratio
+      const currentClipMedia = getMediaByIdRef.current(currentClip.assetId);
+      const CANVAS_ASPECT = CANVAS_WIDTH / CANVAS_HEIGHT; // 1.778 for 16:9
+
+      // Calculate aspect ratio in normalized coordinates (accounts for canvas aspect)
+      // aspectRatioNormalized = how height/width should relate in 0-1 coordinates
+      let aspectRatioNormalized;
+      if (currentClipMedia && currentClipMedia.width && currentClipMedia.height) {
+        const mediaAspect = currentClipMedia.width / currentClipMedia.height;
+        // Convert media aspect to normalized coordinate aspect
+        aspectRatioNormalized = CANVAS_ASPECT / mediaAspect;
+      } else {
+        // Fallback to current ratio if no media info
+        aspectRatioNormalized = initialHeight / initialWidth;
+      }
 
       const centerX = initialClipPositionRef.current.x! + initialWidth / 2;
       const centerY = initialClipPositionRef.current.y! + initialHeight / 2;
@@ -378,8 +392,22 @@ export const useCanvasInteractions = ({
       const currentDistance = Math.sqrt(currentHandleOffsetX ** 2 + currentHandleOffsetY ** 2);
 
       const scale = currentDistance / initialDistance;
-      const newWidth = Math.max(0.05, Math.min(1, initialWidth * scale));
-      const newHeight = Math.max(0.05, Math.min(1, initialHeight * scale));
+
+      // Calculate new width, then calculate height to maintain aspect ratio
+      let newWidth = Math.max(0.05, Math.min(1, initialWidth * scale));
+      let newHeight = newWidth * aspectRatioNormalized;
+
+      // If height exceeds bounds, scale down from height instead
+      if (newHeight > 1) {
+        newHeight = 1;
+        newWidth = newHeight / aspectRatioNormalized;
+      }
+
+      // Ensure minimum size
+      if (newHeight < 0.05) {
+        newHeight = 0.05;
+        newWidth = newHeight / aspectRatioNormalized;
+      }
 
       let newX = centerX - newWidth / 2;
       let newY = centerY - newHeight / 2;

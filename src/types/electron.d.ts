@@ -22,6 +22,7 @@ export interface ElectronAPI {
   saveRecording: (blobData: string, filePath: string) => Promise<{ success: boolean; filePath?: string; fileSize?: number; error?: string }>;
   showRecordingSaveDialog: (defaultFilename: string) => Promise<string | null>;
   convertRecordingToMP4: (webmPath: string, mp4Path: string, quality?: 'high' | 'medium' | 'low', frameRate?: number) => Promise<{ success: boolean; error?: string }>;
+  convertRecordingToMP3: (webmPath: string, mp3Path: string, quality?: 'high' | 'medium' | 'low') => Promise<{ success: boolean; error?: string }>;
   deleteFile: (filePath: string) => Promise<void>;
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;

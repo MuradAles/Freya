@@ -63,6 +63,13 @@
   - Scrub bar interaction
   - Timeline audio display
 
+### Audio Capture
+- **electron-audio-loopback 1.0.6** - System audio capture
+  - Automatic system audio capture on Windows
+  - No manual "Stereo Mix" configuration needed
+  - Intercepts getDisplayMedia calls
+  - Enables loopback audio capture
+
 ### TypeScript
 - **TypeScript ~4.5.4** - Static typing
   - Strict mode enabled
@@ -215,15 +222,23 @@ window.electronAPI = {
   dialogOpenFile: () => ipcRenderer.invoke('dialog:openFile'),
   
   // Recording
-  startRecording: (sources) => ipcRenderer.invoke('recording:start', sources),
-  stopRecording: () => ipcRenderer.invoke('recording:stop'),
+  getRecordingSources: () => ipcRenderer.invoke('recording:getSources'),
+  saveRecording: (blobData, filePath) => ipcRenderer.invoke('recording:saveFile', blobData, filePath),
+  showRecordingSaveDialog: (defaultFilename) => ipcRenderer.invoke('recording:showSaveDialog', defaultFilename),
+  convertRecordingToMP4: (webmPath, mp4Path, quality, frameRate) => 
+    ipcRenderer.invoke('recording:convertToMP4', webmPath, mp4Path, quality, frameRate),
+  
+  // System audio loopback
+  enableLoopbackAudio: () => ipcRenderer.invoke('enable-loopback-audio'),
+  disableLoopbackAudio: () => ipcRenderer.invoke('disable-loopback-audio'),
   
   // Export
   exportVideo: (timeline, path, settings) => 
     ipcRenderer.invoke('export:start', timeline, path, settings),
   
-  // File operations
-  saveFile: (blob, path) => ipcRenderer.invoke('file:save', blob, path),
+  // Event listeners
+  on: (channel, callback) => ipcRenderer.on(channel, (_, ...args) => callback(...args)),
+  off: (channel, callback) => ipcRenderer.removeListener(channel, callback),
 };
 ```
 
@@ -251,7 +266,39 @@ import ffmpeg from 'fluent-ffmpeg';
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ```
 
-### Export Pipeline (Future)
+### Recording Conversion Pipeline
+
+```typescript
+// Convert WebM recording to MP4 with quality options
+ipcMain.handle('recording:convertToMP4', async (event, webmPath, mp4Path, quality, frameRate) => {
+  const crfMap = {
+    high: '18',    // Visually lossless
+    medium: '23',  // High quality (default)
+    low: '28'      // Good quality, smaller files
+  };
+  
+  return new Promise((resolve) => {
+    ffmpeg(webmPath)
+      .output(mp4Path)
+      .videoCodec('libx264')
+      .audioCodec('aac')
+      .outputOptions([
+        '-preset', 'fast',           // Fast encoding
+        '-crf', crfMap[quality],     // Quality setting
+        '-r', frameRate.toString(),  // Frame rate constraint
+        '-movflags', '+faststart',   // Web-optimized majest
+        '-threads', '0'              // Use all CPU cores
+      ])
+      .on('progress', (progress) => {
+        event.sender.send('recording:compressionProgress', progress.percent);
+      })
+      .on('end', () => resolve({ success: true }))
+      .run();
+  });
+});
+```
+
+### Export Pipeline
 
 ```typescript
 async function exportTimeline(timeline, outputPath) {

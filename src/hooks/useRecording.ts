@@ -1,6 +1,13 @@
 import { useRef, useState, useCallback } from 'react';
 import { useUIStore } from '../store/uiStore';
 
+// Module-level ref to store current camera overlay position and visibility for dynamic compositing (in screen/canvas coordinates)
+const cameraOverlayPositionRef = { current: { x: 0, y: 0, width: 320, height: 240, visible: true } };
+
+// Module-level refs to store screen dimensions and viewport dimensions for coordinate conversion
+const screenDimensionsRef = { current: { width: 1920, height: 1080 } };
+const viewportDimensionsRef = { current: { width: 1920, height: 1080 } };
+
 export interface RecordingConfig {
   // Screen recording
   screenType?: 'full' | 'window' | 'custom';
@@ -9,13 +16,19 @@ export interface RecordingConfig {
 
   // Camera recording
   cameraId?: string;
-  cameraPosition?: string;
+  cameraPosition?: string; // Used for camera-only recording (preset positions)
+  cameraOverlay?: { x: number; y: number; width: number; height: number }; // Used for screen + camera (draggable position)
 
   // Audio recording
   microphoneId?: string;
   includeMicrophone?: boolean;
   includeSystemAudio?: boolean; // NEW: Control system audio separately
 }
+
+// Export refs so they can be accessed for coordinate conversion
+export const getCameraOverlayScreenPosition = () => cameraOverlayPositionRef.current;
+export const getScreenDimensions = () => screenDimensionsRef.current;
+export const getViewportDimensions = () => viewportDimensionsRef.current;
 
 export interface UseRecordingReturn {
   isRecording: boolean;
@@ -25,9 +38,13 @@ export interface UseRecordingReturn {
   resumeRecording: () => void;
   stopRecording: () => Promise<Blob>;
   toggleMicrophone: (enabled: boolean) => void;
+  toggleCameraVisibility: (visible: boolean) => void;
+  isCameraVisible: boolean;
   recordingDuration: number;
   error: string | null;
   recordingStream: MediaStream | null;
+  cameraStream: MediaStream | null; // Separate camera stream for preview overlay
+  updateCameraOverlayPosition: (position: { x: number; y: number; width: number; height: number }) => void;
   cleanup: () => void;
 }
 
@@ -36,27 +53,59 @@ export function useRecording(): UseRecordingReturn {
   const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isCameraVisible, setIsCameraVisible] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
   const [recordingStream, setRecordingStream] = useState<MediaStream | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null); // Separate camera stream for UI preview
   const isPausedRef = useRef(false);
   const durationWhenPausedRef = useRef(0);
+  const animationFrameRef = useRef<number | null>(null);
   
   const { setRecording } = useUIStore();
 
   const startRecording = useCallback(async (config: RecordingConfig) => {
     try {
       console.log('🎬 startRecording called with config:', config);
+      
+      // Reset all state to ensure clean start
       setError(null);
       chunksRef.current = [];
       setRecordingDuration(0);
+      setIsPaused(false);
+      isPausedRef.current = false;
+      durationWhenPausedRef.current = 0;
+      setIsCameraVisible(true); // Reset camera visibility
       
-      // Create streams based on config
+      // Clear any existing intervals
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
+      
+      // Create camera stream once if needed (for screen + camera recording, we reuse it)
+      let sharedCameraStream: MediaStream | null = null;
+      if (config.cameraId) {
+        try {
+          sharedCameraStream = await createCameraStream(config.cameraId);
+          // Don't create separate camera stream for UI preview - removed to prevent buffer conflicts
+          // The composited recording stream shows the camera, no need for separate preview
+          setCameraStream(null);
+          console.log('✅ Camera stream created - UI preview removed to prevent Windows Media Foundation buffer conflicts');
+        } catch (err) {
+          console.warn('⚠️ Failed to create camera stream:', err);
+          setCameraStream(null);
+        }
+      } else {
+        setCameraStream(null);
+      }
+      
+      // Create streams based on config (pass shared camera stream to avoid duplicate creation)
       console.log('📹 Creating recording stream...');
-      const stream = await createRecordingStream(config);
+      const stream = await createRecordingStream(config, sharedCameraStream);
       console.log('✅ Recording stream created:', {
         hasStream: !!stream,
         videoTracks: stream.getVideoTracks().length,
@@ -88,9 +137,9 @@ export function useRecording(): UseRecordingReturn {
 
       const options: MediaRecorderOptions = {
         mimeType: selectedMimeType,
-        videoBitsPerSecond: 1500000,  // 1.5 Mbps (reduced from 2 Mbps for smaller files)
-        audioBitsPerSecond: 128000,   // 128 kbps audio (explicit setting)
-        bitsPerSecond: 1628000        // Total: 1.5M video + 128k audio
+        videoBitsPerSecond: 8000000,  // 8 Mbps for high quality screen recording
+        audioBitsPerSecond: 128000,   // 128 kbps audio
+        bitsPerSecond: 8128000        // Total: 8M video + 128k audio
       };
 
       const recorder = new MediaRecorder(stream, options);
@@ -168,7 +217,10 @@ export function useRecording(): UseRecordingReturn {
         chunksRef.current = [];
         setIsRecording(false);
         setRecording(false);
-        setRecordingDuration(0);
+        setIsPaused(false); // Reset pause state
+        isPausedRef.current = false;
+        durationWhenPausedRef.current = 0;
+        // Don't reset duration here - let it stay for display in save dialog
         
         // Convert WebM to MP4 if we can
         try {
@@ -246,13 +298,87 @@ export function useRecording(): UseRecordingReturn {
     });
   }, []);
 
-  // Cleanup function to stop all tracks
+  // Toggle camera visibility on/off during recording
+  const toggleCameraVisibility = useCallback((visible: boolean) => {
+    setIsCameraVisible(visible);
+    if (cameraOverlayPositionRef.current) {
+      cameraOverlayPositionRef.current.visible = visible;
+    }
+    console.log(`📹 Camera overlay ${visible ? 'shown' : 'hidden'}`);
+  }, []);
+
+  // Cleanup function to stop all tracks and reset state
   const cleanup = useCallback(() => {
+    // Stop duration counter if running
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
+    }
+    
+    // Stop all streams
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    // Reset all state
     setRecordingStream(null);
+    setCameraStream(null);
+    setIsRecording(false);
+    setIsPaused(false);
+    setRecordingDuration(0);
+    setError(null);
+    isPausedRef.current = false;
+    durationWhenPausedRef.current = 0;
+    chunksRef.current = [];
+    mediaRecorderRef.current = null;
+    
+    // Clear UI store recording state
+    setRecording(false);
+  }, [cameraStream, setRecording]);
+
+  // Function to update camera overlay position during recording
+  // Position is in viewport coordinates, needs to be converted to screen/canvas coordinates
+  const updateCameraOverlayPosition = useCallback((position: { x: number; y: number; width: number; height: number }) => {
+    // Update current viewport dimensions (in case window was resized)
+    viewportDimensionsRef.current = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    
+    // Convert viewport coordinates to screen/canvas coordinates
+    const screenWidth = screenDimensionsRef.current.width;
+    const screenHeight = screenDimensionsRef.current.height;
+    const viewportWidth = viewportDimensionsRef.current.width;
+    const viewportHeight = viewportDimensionsRef.current.height;
+    
+    // Calculate scale factors
+    const scaleX = screenWidth / viewportWidth;
+    const scaleY = screenHeight / viewportHeight;
+    
+    // Convert position to screen coordinates (preserve visibility state)
+    cameraOverlayPositionRef.current = {
+      ...cameraOverlayPositionRef.current,
+      x: position.x * scaleX,
+      y: position.y * scaleY,
+      width: position.width * scaleX,
+      height: position.height * scaleY
+    };
+    
+    console.log('📍 Camera overlay position updated:', {
+      viewport: position,
+      screen: cameraOverlayPositionRef.current,
+      scale: { x: scaleX, y: scaleY },
+      screenDimensions: { width: screenWidth, height: screenHeight },
+      viewportDimensions: { width: viewportWidth, height: viewportHeight }
+    });
   }, []);
 
   return {
@@ -263,34 +389,58 @@ export function useRecording(): UseRecordingReturn {
     resumeRecording,
     stopRecording,
     toggleMicrophone,
+    toggleCameraVisibility,
+    isCameraVisible,
     recordingDuration,
     error,
     recordingStream,
+    cameraStream, // Expose camera stream for UI overlay
+    updateCameraOverlayPosition, // Expose function to update overlay position
     cleanup, // Expose cleanup function
   };
 }
 
 /**
  * Create a MediaStream based on the recording configuration
+ * @param config Recording configuration
+ * @param existingCameraStream Optional existing camera stream to reuse (avoids duplicate getUserMedia calls)
  */
-async function createRecordingStream(config: RecordingConfig): Promise<MediaStream> {
+async function createRecordingStream(config: RecordingConfig, existingCameraStream?: MediaStream | null): Promise<MediaStream> {
   const streams: MediaStream[] = [];
+  let screenStream: MediaStream | null = null;
+  let cameraRecordStream: MediaStream | null = null;
 
   // Screen recording
   if (config.screenType) {
-    const screenStream = await createScreenStream(config);
+    screenStream = await createScreenStream(config);
     streams.push(screenStream);
   }
 
-  // Camera recording
+  // Camera recording - reuse existing stream if provided, otherwise create new one
+  // This prevents "Failed to reserve output capture buffer" errors on Windows
   if (config.cameraId) {
-    const cameraStream = await createCameraStream(config.cameraId);
-    streams.push(cameraStream);
+    if (existingCameraStream) {
+      // Reuse the existing camera stream (for screen + camera mode)
+      cameraRecordStream = existingCameraStream;
+      console.log('♻️ Reusing existing camera stream for compositing');
+    } else {
+      // Create new camera stream (for camera-only mode)
+      cameraRecordStream = await createCameraStream(config.cameraId);
+    }
+    
+    // Only add to streams if we're NOT recording screen (camera-only recording)
+    // If recording screen + camera, we'll composite them with canvas instead
+    if (!config.screenType) {
+      streams.push(cameraRecordStream);
+    }
   }
 
   // System audio (loopback) - Use electron-audio-loopback via IPC
-  // Only enable if user wants system audio
-  if (config.includeSystemAudio !== false) { // Default to true if not specified
+  // Only enable if user wants system audio AND we're doing screen/camera recording
+  // For audio-only recording (just microphoneId), don't enable system audio by default
+  const shouldEnableSystemAudio = config.includeSystemAudio !== false && (config.screenType || config.cameraId);
+
+  if (shouldEnableSystemAudio) { // Default to true for screen/camera, false for audio-only
     try {
       console.log('🔊 Attempting to capture system audio via electron-audio-loopback...');
 
@@ -317,8 +467,10 @@ async function createRecordingStream(config: RecordingConfig): Promise<MediaStre
   }
 
   // Microphone recording
-  if (config.includeMicrophone && config.microphoneId) {
+  // If microphoneId is provided, always capture microphone (includeMicrophone flag is optional)
+  if (config.microphoneId) {
     console.log('🎤 Attempting to capture microphone:', config.microphoneId);
+    console.log('   includeMicrophone flag:', config.includeMicrophone);
     try {
       const micStream = await createMicrophoneStream(config.microphoneId);
       streams.push(micStream);
@@ -369,10 +521,51 @@ async function createRecordingStream(config: RecordingConfig): Promise<MediaStre
   // Mix multiple audio tracks using Web Audio API
   const combinedStream = new MediaStream();
 
-  // Add all video tracks (these work fine with multiple tracks)
-  allVideoTracks.forEach(track => {
-    combinedStream.addTrack(track);
-  });
+  // Handle video tracks - if we have both screen and camera, composite them with canvas
+  if (screenStream && cameraRecordStream) {
+    console.log('\n🎨 COMPOSITING SCREEN + CAMERA using Canvas API...');
+    
+    // Store screen dimensions for coordinate conversion
+    const screenSettings = screenStream.getVideoTracks()[0].getSettings();
+    screenDimensionsRef.current = {
+      width: screenSettings.width || 1920,
+      height: screenSettings.height || 1080
+    };
+    console.log('📐 Screen dimensions stored:', screenDimensionsRef.current);
+    
+    // Store initial viewport dimensions (will be updated on window resize)
+    viewportDimensionsRef.current = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    console.log('📐 Viewport dimensions stored:', viewportDimensionsRef.current);
+    
+    // Convert initial camera overlay position from viewport to screen coordinates
+    let initialOverlayPosition = config.cameraOverlay;
+    if (initialOverlayPosition) {
+      const scaleX = screenDimensionsRef.current.width / viewportDimensionsRef.current.width;
+      const scaleY = screenDimensionsRef.current.height / viewportDimensionsRef.current.height;
+      initialOverlayPosition = {
+        x: initialOverlayPosition.x * scaleX,
+        y: initialOverlayPosition.y * scaleY,
+        width: initialOverlayPosition.width * scaleX,
+        height: initialOverlayPosition.height * scaleY
+      };
+      console.log('📐 Initial overlay position converted:', {
+        viewport: config.cameraOverlay,
+        screen: initialOverlayPosition
+      });
+    }
+    
+    const compositedStream = await compositeScreenAndCamera(screenStream, cameraRecordStream, initialOverlayPosition);
+    combinedStream.addTrack(compositedStream.getVideoTracks()[0]);
+    console.log('✅ Screen and camera composited into single video track');
+  } else {
+    // Add all video tracks normally (single source or camera-only)
+    allVideoTracks.forEach(track => {
+      combinedStream.addTrack(track);
+    });
+  }
 
   // Mix audio tracks if we have more than one
   if (allAudioTracks.length > 1) {
@@ -508,12 +701,189 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
 }
 
 /**
- * Create a camera stream
+ * Create a camera stream with optimized settings to reduce buffer allocation errors
+ * Windows Media Foundation has trouble with high frame rates, so we limit it to 30fps
  */
 async function createCameraStream(cameraId: string): Promise<MediaStream> {
-  return await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: cameraId } },
+  try {
+    // Request camera with VERY conservative constraints to minimize Windows MF buffer issues
+    // Lower frame rate and resolution significantly reduce buffer allocation errors
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { 
+        deviceId: { exact: cameraId },
+        // Limit frame rate to 15fps to DRASTICALLY reduce buffer allocation frequency
+        // This is low enough that Windows Media Foundation can keep up
+        frameRate: { ideal: 15, max: 15 },
+        // Also limit resolution to reduce buffer size requirements
+        width: { ideal: 640, max: 1280 },
+        height: { ideal: 480, max: 720 }
+      },
+    });
+    
+    console.log('✅ Camera stream created with optimized settings (15fps max, 640x480)');
+    
+    // Log the actual settings that were applied
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      const settings = videoTrack.getSettings();
+      console.log('📹 Camera settings:', {
+        width: settings.width,
+        height: settings.height,
+        frameRate: settings.frameRate,
+        deviceId: settings.deviceId
+      });
+    }
+    
+    return stream;
+  } catch (error) {
+    console.error('❌ Failed to create camera stream:', error);
+    // Re-throw with more context
+    throw new Error(`Camera access failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Composite screen and camera streams using Canvas API
+ * This allows us to overlay the camera on the screen recording
+ */
+async function compositeScreenAndCamera(
+  screenStream: MediaStream,
+  cameraStream: MediaStream,
+  overlayPosition?: { x: number; y: number; width: number; height: number }
+): Promise<MediaStream> {
+  // Create canvas elements for both streams
+  const screenVideo = document.createElement('video');
+  const cameraVideo = document.createElement('video');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) {
+    throw new Error('Could not get canvas context');
+  }
+
+  // Set up video elements - set muted to prevent audio feedback
+  screenVideo.srcObject = screenStream;
+  cameraVideo.srcObject = cameraStream;
+  screenVideo.autoplay = true;
+  cameraVideo.autoplay = true;
+  screenVideo.playsInline = true;
+  cameraVideo.playsInline = true;
+  screenVideo.muted = true;
+  cameraVideo.muted = true;
+
+  // Wait for videos to be ready
+  await new Promise<void>((resolve) => {
+    let loadedCount = 0;
+    const checkReady = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        resolve();
+      }
+    };
+    screenVideo.onloadedmetadata = checkReady;
+    cameraVideo.onloadedmetadata = checkReady;
   });
+
+  // Set canvas size to match screen stream
+  const screenSettings = screenStream.getVideoTracks()[0].getSettings();
+  canvas.width = screenSettings.width || 1920;
+  canvas.height = screenSettings.height || 1080;
+
+  // Default camera overlay position (bottom-right corner, 320x240)
+  const defaultOverlay = {
+    x: canvas.width - 340,
+    y: canvas.height - 260,
+    width: 320,
+    height: 240
+  };
+  
+  // Initialize the position ref with the initial position and visibility
+  if (overlayPosition) {
+    cameraOverlayPositionRef.current = { ...overlayPosition, visible: true };
+  } else {
+    cameraOverlayPositionRef.current = { ...defaultOverlay, visible: true };
+  }
+
+  // Animation function to composite frames - reads position from ref each frame
+  // Use different frame rates for screen (30fps) and camera (15fps) to reduce buffer pressure
+  let lastScreenDrawTime = 0;
+  let lastCameraDrawTime = 0;
+  const screenFrameRate = 30; // Screen updates at 30fps
+  const cameraFrameRate = 15; // Camera updates at 15fps to SIGNIFICANTLY reduce Windows MF buffer pressure
+  const screenFrameInterval = 1000 / screenFrameRate; // ~33ms
+  const cameraFrameInterval = 1000 / cameraFrameRate; // ~67ms
+  
+  // Store last camera frame to avoid accessing video element too frequently
+  let lastCameraFrame: ImageData | null = null;
+  
+  const drawFrame = (currentTime: number) => {
+    const elapsedSinceScreen = currentTime - lastScreenDrawTime;
+    const elapsedSinceCamera = currentTime - lastCameraDrawTime;
+    
+    // Draw screen at 30fps
+    if (elapsedSinceScreen >= screenFrameInterval) {
+      lastScreenDrawTime = currentTime - (elapsedSinceScreen % screenFrameInterval);
+      
+      // Always draw screen as background
+      ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+      
+      // Re-draw the last camera frame if we have one AND camera is visible
+      if (lastCameraFrame && cameraOverlayPositionRef.current.visible) {
+        const currentOverlay = cameraOverlayPositionRef.current;
+        ctx.putImageData(lastCameraFrame, currentOverlay.x, currentOverlay.y);
+      }
+    }
+    
+    // Update camera frame at 15fps (HALF the screen rate to reduce buffer pressure)
+    if (elapsedSinceCamera >= cameraFrameInterval) {
+      lastCameraDrawTime = currentTime - (elapsedSinceCamera % cameraFrameInterval);
+      
+      const currentOverlay = cameraOverlayPositionRef.current;
+      
+      // Only update camera frame if camera is visible
+      if (currentOverlay.visible) {
+        // Only access camera video element every ~67ms to reduce Windows MF buffer allocations
+        // readyState 2 = HAVE_CURRENT_DATA, 4 = HAVE_ENOUGH_DATA
+        if (cameraVideo.readyState >= 2) {
+          // Create temporary canvas to capture camera frame
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = currentOverlay.width;
+          tempCanvas.height = currentOverlay.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (tempCtx) {
+            // Draw camera to temp canvas
+            tempCtx.drawImage(cameraVideo, 0, 0, currentOverlay.width, currentOverlay.height);
+            // Capture as ImageData to avoid accessing video element again
+            lastCameraFrame = tempCtx.getImageData(0, 0, currentOverlay.width, currentOverlay.height);
+          }
+        }
+      } else {
+        // Camera is hidden - clear the last frame so it doesn't appear
+        lastCameraFrame = null;
+      }
+    }
+    
+    requestAnimationFrame(drawFrame);
+  };
+
+  // Start drawing with initial timestamp
+  requestAnimationFrame((timestamp) => {
+    lastScreenDrawTime = timestamp;
+    lastCameraDrawTime = timestamp;
+    drawFrame(timestamp);
+  });
+
+  // Return canvas stream at 30fps (screen rate)
+  // Camera overlay appears at 15fps within the stream
+  return canvas.captureStream(screenFrameRate); // 30 FPS for smooth screen
+}
+
+/**
+ես
+
+  // Return canvas stream
+  return canvas.captureStream(60); // 60 FPS
 }
 
 /**

@@ -112,7 +112,7 @@ export const useTimelineStore = create<TimelineStore>()(
             if (track.id === newTrackId) {
               return {
                 ...track,
-                clips: [...track.clips, { ...clipToMove, startTime: newStartTime }]
+                clips: [...track.clips, { ...clipToMove, trackId: newTrackId, startTime: newStartTime }]
               };
             }
             return track;
@@ -134,10 +134,40 @@ export const useTimelineStore = create<TimelineStore>()(
         for (const track of tracks) {
           const clip = track.clips.find(c => c.id === clipId);
           if (clip && splitTime > clip.startTime && splitTime < clip.startTime + clip.duration) {
-            // Create two clips
-            const firstDuration = splitTime - clip.startTime;
+            // Calculate time positions relative to the clip
+            const timeInClip = splitTime - clip.startTime; // Time from start of clip in timeline
+            
+            // First clip: from start to split point
+            const firstDuration = timeInClip;
+            const firstTrimEnd = clip.trimStart + firstDuration;
+            
+            // Second clip: from split point to end
             const secondStart = splitTime;
             const secondDuration = clip.duration - firstDuration;
+            const secondTrimStart = clip.trimStart + firstDuration; // New trim start for second clip
+            const secondTrimEnd = clip.trimEnd; // Keep original trim end
+            
+            // Create the two clips with all properties preserved
+            const firstClip: TimelineClip = {
+              ...clip,
+              duration: firstDuration,
+              trimEnd: firstTrimEnd,
+            };
+            
+            const secondClip: TimelineClip = {
+              ...clip,
+              id: generateId(),
+              startTime: secondStart,
+              duration: secondDuration,
+              trimStart: secondTrimStart,
+              trimEnd: secondTrimEnd,
+            };
+            
+            // Update selection to include both new clips
+            const currentSelection = get().selectedClipIds;
+            const newSelection = currentSelection.includes(clipId)
+              ? currentSelection.filter(id => id !== clipId).concat([firstClip.id, secondClip.id])
+              : currentSelection;
             
             set((state) => ({
               tracks: state.tracks.map(t =>
@@ -146,15 +176,13 @@ export const useTimelineStore = create<TimelineStore>()(
                       ...t,
                       clips: t.clips.flatMap(c =>
                         c.id === clipId
-                          ? [
-                              { ...c, duration: firstDuration },
-                              { ...c, id: generateId(), startTime: secondStart, duration: secondDuration }
-                            ]
+                          ? [firstClip, secondClip]
                           : [c]
                       )
                     }
                   : t
-              )
+              ),
+              selectedClipIds: newSelection,
             }));
             break;
           }

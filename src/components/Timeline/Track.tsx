@@ -48,10 +48,13 @@ export default function Track({ track, containerWidth }: TrackProps) {
     const gridInterval = 1;
     const snappedTime = Math.round(startTime / gridInterval) * gridInterval;
 
+    // For images, use 10 seconds duration instead of 0
+    const clipDuration = media.type === 'image' ? 10 : media.duration;
+
     // Check if position would overlap with existing clips
     const wouldOverlap = track.clips.some(clip => {
       const clipEnd = clip.startTime + clip.duration;
-      const newEnd = snappedTime + media.duration;
+      const newEnd = snappedTime + clipDuration;
       return snappedTime < clipEnd && newEnd > clip.startTime;
     });
 
@@ -67,15 +70,18 @@ export default function Track({ track, containerWidth }: TrackProps) {
       }
 
       // Place clip at next available position
-      createClip(media.id, nextAvailableTime, media.duration);
+      createClip(media.id, nextAvailableTime, clipDuration);
     } else {
       // Place at dropped position
-      createClip(media.id, snappedTime, media.duration);
+      createClip(media.id, snappedTime, clipDuration);
     }
   };
 
   const createClip = (assetId: string, startTime: number, duration: number) => {
     const media = getMediaById(assetId);
+    
+    // For images, trimEnd should be the clip duration (10 seconds), not media.duration (0)
+    const trimEnd = media?.type === 'image' ? duration : (media?.duration || duration);
     
     const newClip: TimelineClipType = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -85,7 +91,7 @@ export default function Track({ track, containerWidth }: TrackProps) {
       duration,
       trimStart: 0,
       // trimEnd should be the absolute end position in source, which is just the clip duration when starting from 0
-      trimEnd: media?.duration || duration,
+      trimEnd,
       speed: 1,
       volume: 1,
       fadeIn: 0,

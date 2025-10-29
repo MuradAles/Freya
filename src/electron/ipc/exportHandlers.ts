@@ -98,7 +98,7 @@ async function exportTimeline(job: ExportJob): Promise<void> {
   tracks.forEach(track => {
     track.clips.forEach(clip => {
       const media = mediaAssets.find(a => a.id === clip.assetId);
-      if (media && (media.type === 'video' || media.type === 'audio')) {
+      if (media && (media.type === 'video' || media.type === 'audio' || media.type === 'image')) {
         allClips.push({ clip, media, trackOrder: track.order });
       }
     });
@@ -172,22 +172,24 @@ async function exportTimeline(job: ExportJob): Promise<void> {
   const maxEndTime = Math.max(...processedClips.map(c => c.clip.startTime + c.clip.duration));
   console.log(`\n⏱️  Timeline duration: ${maxEndTime.toFixed(2)}s`);
   
-  // Separate video and audio clips
-  const videoClips = processedClips.filter(c => c.media.type === 'video');
+  // Separate video/image and audio clips (images are treated as video)
+  const videoClips = processedClips.filter(c => c.media.type === 'video' || c.media.type === 'image');
   const audioClips = processedClips.filter(c => c.media.type === 'audio');
-  
+
   console.log(`\n📊 COMPOSITION ANALYSIS:`);
-  console.log(`   Video clips: ${videoClips.length}`);
+  console.log(`   Video clips: ${videoClips.filter(c => c.media.type === 'video').length}`);
+  console.log(`   Image clips: ${videoClips.filter(c => c.media.type === 'image').length}`);
   console.log(`   Audio clips: ${audioClips.length}`);
   
-  // Detect overlaps
+  // Detect overlaps or if we need multi-track composition
   const hasOverlaps = detectOverlaps(videoClips);
-  
-  if (hasOverlaps) {
-    console.log(`   ✅ OVERLAPPING CLIPS DETECTED - Using multi-track overlay composition`);
+  const needsMultiTrack = hasOverlaps || audioClips.length > 0 || videoClips.some(c => c.clip.position);
+
+  if (needsMultiTrack) {
+    console.log(`   ✅ Using multi-track composition (overlaps: ${hasOverlaps}, audio tracks: ${audioClips.length}, positioned clips: ${videoClips.filter(c => c.clip.position).length})`);
     return buildMultiTrackComposition(videoClips, audioClips, maxEndTime, resolution, outputPath, job, tempDir);
   } else {
-    console.log(`   ✓ No overlapping clips - Using simple concatenation with audio mix`);
+    console.log(`   ✓ No overlapping clips - Using simple concatenation`);
     return buildSimpleComposition(sortedClips, audioClips, maxEndTime, outputPath, job, tempDir, mediaAssets);
   }
 }
@@ -273,7 +275,7 @@ async function buildSimpleComposition(
       reject(err);
     });
 
-    let progressStartTime = Date.now();
+    const progressStartTime = Date.now();
     const estimatedDuration = maxEndTime;
     
     command.on('progress', (progress) => {
@@ -550,7 +552,7 @@ async function buildMultiTrackComposition(
         reject(err);
       });
 
-      let progressStartTime = Date.now();
+      const progressStartTime = Date.now();
       const estimatedDuration = maxEndTime;
       
       command.on('progress', (progress) => {
@@ -614,9 +616,11 @@ async function processClip(
   console.log(`   Type: ${media.type}`);
   console.log(`   Duration: ${clip.duration}s`);
   console.log(`   Speed: ${clip.speed}x, Volume: ${clip.volume}`);
+  console.log(`   Input path: ${media.path}`);
 
   const inputPath = media.path;
   const outputClip = path.join(tempDir, `clip_${clip.id}.mp4`);
+  console.log(`   Output path: ${outputClip}`);
 
   const startTime = clip.trimStart || 0;
   const duration = clip.duration;
@@ -625,9 +629,15 @@ async function processClip(
   const filters: string[] = [];
   const audioFilters: string[] = [];
 
-  // Scale to target resolution
+  // For videos and images, ensure consistent format for filter graph
+  // We apply a minimal filter to normalize pixel format and frame rate
+  // but don't scale to full resolution - scaling happens in composition
   if (media.type === 'video') {
-    filters.push(`scale=${resolution.width}:${resolution.height}`);
+    filters.push('fps=30,format=yuv420p');
+  } else if (media.type === 'image') {
+    // For images, we need to ensure the output has valid dimensions
+    // Use scale to ensure even dimensions (required for yuv420p)
+    filters.push('scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p');
   }
 
   // Apply speed effect
@@ -664,15 +674,28 @@ async function processClip(
   }
 
   return new Promise((resolve, reject) => {
-    const command = ffmpeg(inputPath)
-      .setStartTime(startTime)
-      .setDuration(duration);
+    let command;
 
-    if (filters.length > 0) {
+    // For images, we need to use loop input and set duration
+    if (media.type === 'image') {
+      // Create command with special input options for images
+      command = ffmpeg()
+        .input(inputPath)
+        .inputOptions([
+          '-loop', '1',           // Loop the image
+          '-framerate', '30',     // Set framerate for the looped image
+          '-t', duration.toString() // Duration at input level
+        ]);
+    } else {
+      // For video/audio, use normal start time and duration
+      command = ffmpeg(inputPath)
+        .setStartTime(startTime)
+        .setDuration(duration);
+    }
+
+    // Apply video filters (for videos and images to normalize format)
+    if (filters.length > 0 && (media.type === 'video' || media.type === 'image')) {
       command.videoFilters(filters);
-    } else if (media.type === 'video') {
-      // Just scale if no effects
-      command.videoFilters([`scale=${resolution.width}:${resolution.height}`]);
     }
 
     // Handle volume
@@ -685,12 +708,34 @@ async function processClip(
       command.audioFilters(audioFilters);
     }
 
+    // Set output options
+    command.format('mp4');
+
+    // For images, we need to explicitly set video codec and disable audio
+    if (media.type === 'image') {
+      command
+        .videoCodec('libx264')
+        .outputOptions([
+          '-preset', 'medium',
+          '-crf', '23',
+          '-an'  // Disable audio for images
+        ]);
+    } else if (media.type === 'video') {
+      command.videoCodec('libx264');
+    }
+
     command
-      .format('mp4')
       .saveToFile(outputClip)
+      .on('start', (cmdLine) => {
+        console.log(`   🔧 FFmpeg command: ${cmdLine.substring(0, 200)}...`);
+      })
       .on('end', () => {
+        console.log(`   ✅ Processed successfully`);
         resolve({ clip, media, tempFile: outputClip, trackOrder });
       })
-      .on('error', reject);
+      .on('error', (err) => {
+        console.error(`   ❌ Processing failed:`, err.message);
+        reject(err);
+      });
   });
 }

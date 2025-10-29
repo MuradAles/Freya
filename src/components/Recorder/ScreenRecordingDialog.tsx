@@ -11,7 +11,8 @@ interface ScreenRecordingDialogProps {
     customArea?: { x: number; y: number; width: number; height: number; screenId: string };
     includeMicrophone: boolean;
     microphoneId?: string;
-    includeSystemAudio: boolean; // NEW: Control system audio separately
+    includeSystemAudio: boolean;
+    cameraId?: string; // NEW: Optional camera for screen recording
   }) => void;
 }
 
@@ -23,6 +24,9 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
   const [includeSystemAudio, setIncludeSystemAudio] = useState(true); // Default: ON
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string>('');
   const [microphones, setMicrophones] = useState<Array<{ id: string; label: string }>>([]);
+  const [includeCamera, setIncludeCamera] = useState(false); // Camera overlay for screen recording
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [showCustomAreaSelector, setShowCustomAreaSelector] = useState(false);
   const [customArea, setCustomArea] = useState<{ x: number; y: number; width: number; height: number; screenId: string } | null>(null);
   
@@ -31,7 +35,7 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
-  // Load available windows and microphones when dialog opens
+  // Load available windows, microphones, and cameras when dialog opens
   React.useEffect(() => {
     if (isOpen && screenType === 'window') {
       loadWindows();
@@ -39,7 +43,10 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     if (isOpen && includeMicrophone) {
       loadMicrophones();
     }
-  }, [isOpen, screenType, includeMicrophone]);
+    if (isOpen && includeCamera) {
+      loadCameras();
+    }
+  }, [isOpen, screenType, includeMicrophone, includeCamera]);
 
   // Start live preview when screen type changes
   useEffect(() => {
@@ -52,12 +59,12 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
         setIsLoadingPreview(true);
 
         if (screenType === 'full') {
-          // Start full screen preview using getDisplayMedia
-          console.log('🎥 Starting full screen preview...');
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { displaySurface: 'screen' } as any,
-            audio: false
-          });
+          // Skip preview for full screen - will use picker during actual recording
+          // Showing preview would trigger the OS picker dialog which is annoying
+          console.log('⏭️  Skipping full screen preview (will use picker when recording starts)');
+          setPreviewStream(null);
+          setIsLoadingPreview(false);
+          return;
         } else if (screenType === 'window' && selectedWindowId) {
           // Start window preview using getUserMedia with Electron constraints
           console.log('🎥 Starting window preview for:', selectedWindowId);
@@ -68,7 +75,8 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
                 chromeMediaSource: 'desktop',
                 chromeMediaSourceId: selectedWindowId
               }
-            } as any
+            } as any,
+            audio: false
           });
         }
 
@@ -84,9 +92,13 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
       }
     };
 
-    // Only start preview for full screen or when window is selected
-    if (screenType === 'full' || (screenType === 'window' && selectedWindowId)) {
+    // Only start preview for window (skip full screen to avoid picker dialog)
+    if (screenType === 'window' && selectedWindowId) {
       startPreview();
+    } else if (screenType === 'full') {
+      // Clear preview for full screen mode
+      setPreviewStream(null);
+      setIsLoadingPreview(false);
     }
 
     // Cleanup on unmount or when screen type changes
@@ -139,6 +151,22 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     }
   };
 
+  const loadCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(device => device.kind === 'videoinput');
+      setCameras(videoInputs.map(device => ({
+        id: device.deviceId,
+        label: device.label || `Camera ${videoInputs.indexOf(device) + 1}`
+      })));
+      if (videoInputs.length > 0) {
+        setSelectedCameraId(videoInputs[0].deviceId);
+      }
+    } catch (error) {
+      console.error('Error loading cameras:', error);
+    }
+  };
+
   const handleScreenTypeChange = (type: 'full' | 'window' | 'custom') => {
     setScreenType(type);
     if (type === 'window' && windows.length === 0) {
@@ -186,6 +214,10 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
       alert('Please select a microphone');
       return;
     }
+    if (includeCamera && !selectedCameraId) {
+      alert('Please select a camera');
+      return;
+    }
 
     onStart({
       screenType,
@@ -194,6 +226,7 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
       includeMicrophone,
       microphoneId: includeMicrophone ? selectedMicrophoneId : undefined,
       includeSystemAudio, // Pass system audio toggle
+      cameraId: includeCamera ? selectedCameraId : undefined, // Pass camera ID if enabled
     });
   };
 
@@ -354,6 +387,42 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
                   </select>
                 </div>
               )}
+
+              {/* Camera Overlay Toggle */}
+              <label className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
+                <input
+                  type="checkbox"
+                  checked={includeCamera}
+                  onChange={(e) => {
+                    setIncludeCamera(e.target.checked);
+                    if (e.target.checked && cameras.length === 0) {
+                      loadCameras();
+                    }
+                  }}
+                  className="w-5 h-5 text-purple-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="text-white block">Camera Overlay</span>
+                  <span className="text-xs text-gray-400">Show camera on screen recording (draggable during recording)</span>
+                </div>
+              </label>
+
+              {/* Camera Dropdown */}
+              {includeCamera && (
+                <div className="ml-8">
+                  <select
+                    value={selectedCameraId}
+                    onChange={(e) => setSelectedCameraId(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white"
+                  >
+                    {cameras.map((camera) => (
+                      <option key={camera.id} value={camera.id}>
+                        {camera.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -380,7 +449,13 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center text-gray-500">
                     <Monitor className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Screen preview will show here</p>
+                    <p className="text-sm">
+                      {screenType === 'full'
+                        ? 'Preview not available for full screen (you\'ll select screen when recording starts)'
+                        : screenType === 'window'
+                        ? 'Select a window to see preview'
+                        : 'Screen preview will show here'}
+                    </p>
                   </div>
                 </div>
               )}
