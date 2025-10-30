@@ -784,10 +784,20 @@ async function compositeScreenAndCamera(
     cameraVideo.onloadedmetadata = checkReady;
   });
 
-  // Set canvas size to match screen stream
-  const screenSettings = screenStream.getVideoTracks()[0].getSettings();
-  canvas.width = screenSettings.width || 1920;
-  canvas.height = screenSettings.height || 1080;
+  // Set canvas size to match actual video dimensions (more accurate than settings)
+  // Use videoWidth/videoHeight from the actual video element for exact matching
+  const videoWidth = screenVideo.videoWidth || 1920;
+  const videoHeight = screenVideo.videoHeight || 1080;
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+  
+  console.log('📐 Canvas dimensions set from video:', { width: videoWidth, height: videoHeight });
+  
+  // Store screen dimensions for coordinate conversion
+  screenDimensionsRef.current = {
+    width: videoWidth,
+    height: videoHeight
+  };
 
   // Default camera overlay position (bottom-right corner, 320x240)
   const defaultOverlay = {
@@ -824,8 +834,13 @@ async function compositeScreenAndCamera(
     if (elapsedSinceScreen >= screenFrameInterval) {
       lastScreenDrawTime = currentTime - (elapsedSinceScreen % screenFrameInterval);
       
-      // Always draw screen as background
-      ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+      // Clear canvas first to prevent any leftover pixels
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Always draw screen as background - use exact video dimensions to avoid edge artifacts
+      const videoW = screenVideo.videoWidth || canvas.width;
+      const videoH = screenVideo.videoHeight || canvas.height;
+      ctx.drawImage(screenVideo, 0, 0, videoW, videoH, 0, 0, canvas.width, canvas.height);
       
       // Re-draw the last camera frame if we have one AND camera is visible
       if (lastCameraFrame && cameraOverlayPositionRef.current.visible) {

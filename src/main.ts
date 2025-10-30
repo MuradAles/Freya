@@ -4,6 +4,7 @@ import started from 'electron-squirrel-startup';
 import { setupFileHandlers } from './electron/ipc/fileHandlers';
 import { setupExportHandlers } from './electron/ipc/exportHandlers';
 import { setupRecordingHandlers } from './electron/ipc/recordingHandlers';
+import { setupAIHandlers } from './electron/ipc/aiHandlers';
 import { initMain } from 'electron-audio-loopback';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -131,6 +132,7 @@ app.on('ready', () => {
   setupFileHandlers();
   setupExportHandlers();
   setupRecordingHandlers();
+  setupAIHandlers();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

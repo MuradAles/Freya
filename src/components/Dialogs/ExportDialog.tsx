@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
+import { useTimelineStore } from '../../store/timelineStore';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -8,17 +9,65 @@ interface ExportDialogProps {
 }
 
 export interface ExportSettings {
-  resolution: '720p' | '1080p' | '4k' | 'source';
   outputPath: string;
+  customWidth: number;
+  customHeight: number;
 }
 
+type ResolutionPreset = {
+  label: string;
+  width: number;
+  height: number;
+};
+
 export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialogProps) {
-  const [selectedResolution, setSelectedResolution] = useState<'720p' | '1080p' | '4k' | 'source'>('1080p');
   const [outputPath, setOutputPath] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const { canvasWidth, canvasHeight } = useTimelineStore();
+  
+  // Generate resolution presets based on canvas aspect ratio
+  const resolutionPresets = useMemo(() => {
+    const aspectRatio = canvasWidth / canvasHeight;
+    
+    // Base heights for different resolution levels (720p, 1080p, 2K, 4K)
+    const baseHeights = [720, 1080, 1440, 2160];
+    
+    return baseHeights.map((height) => {
+      const width = Math.round(height * aspectRatio);
+      // Round to even numbers for better codec compatibility
+      const roundedWidth = Math.round(width / 2) * 2;
+      const roundedHeight = Math.round(height / 2) * 2;
+      
+      let label = '';
+      if (height === 720) label = '720p';
+      else if (height === 1080) label = '1080p';
+      else if (height === 1440) label = '2K';
+      else if (height === 2160) label = '4K';
+      
+      return {
+        label,
+        width: roundedWidth,
+        height: roundedHeight,
+      };
+    });
+  }, [canvasWidth, canvasHeight]);
+  
+  // Initialize selected resolution to 1080p equivalent (index 1)
+  const [selectedResolution, setSelectedResolution] = useState<ResolutionPreset | null>(null);
+  
+  // Set default resolution when dialog opens or presets change
+  useEffect(() => {
+    if (resolutionPresets.length > 0) {
+      // Default to 1080p equivalent if available, otherwise use the first preset
+      const defaultIndex = resolutionPresets.length > 1 ? 1 : 0;
+      if (!selectedResolution || selectedResolution.label !== resolutionPresets[defaultIndex].label) {
+        setSelectedResolution(resolutionPresets[defaultIndex]);
+      }
+    }
+  }, [resolutionPresets, isOpen]);
 
   // Listen for export progress updates
   useEffect(() => {
@@ -48,7 +97,6 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
       setExportProgress(0);
       setError(null);
       setIsComplete(false);
-      setSelectedResolution('1080p');
       setOutputPath('');
     }
   }, [isOpen]);
@@ -58,6 +106,11 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
       setError('Please select an output path');
       return;
     }
+    
+    if (!selectedResolution) {
+      setError('Please select a resolution');
+      return;
+    }
 
     setIsExporting(true);
     setError(null);
@@ -65,8 +118,9 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
 
     try {
       await onExport({
-        resolution: selectedResolution,
-        outputPath
+        outputPath,
+        customWidth: selectedResolution.width,
+        customHeight: selectedResolution.height,
       });
       
       // Ensure we show 100% progress
@@ -129,8 +183,8 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
             
             <div className="text-xs text-gray-400 space-y-1">
               <div className="flex items-center justify-between">
-                <span>Resolution:</span>
-                <span className="text-white">{selectedResolution.toUpperCase()}</span>
+                <span>Export Size:</span>
+                <span className="text-white">{selectedResolution ? `${selectedResolution.width}×${selectedResolution.height}` : 'N/A'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Output:</span>
@@ -160,51 +214,32 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Resolution
               </label>
-              <div className="space-y-1.5">
-                <label className="flex items-center space-x-2 cursor-pointer py-1 hover:bg-gray-700/50 rounded px-2 -mx-2">
-                  <input
-                    type="radio"
-                    name="resolution"
-                    value="720p"
-                    checked={selectedResolution === '720p'}
-                    onChange={(e) => setSelectedResolution(e.target.value as any)}
-                    className="text-purple-600 focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-white">720p (1280x720)</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer py-1 hover:bg-gray-700/50 rounded px-2 -mx-2">
-                  <input
-                    type="radio"
-                    name="resolution"
-                    value="1080p"
-                    checked={selectedResolution === '1080p'}
-                    onChange={(e) => setSelectedResolution(e.target.value as any)}
-                    className="text-purple-600 focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-white">1080p (1920x1080) - Recommended</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer py-1 hover:bg-gray-700/50 rounded px-2 -mx-2">
-                  <input
-                    type="radio"
-                    name="resolution"
-                    value="4k"
-                    checked={selectedResolution === '4k'}
-                    onChange={(e) => setSelectedResolution(e.target.value as any)}
-                    className="text-purple-600 focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-white">4K (3840x2160)</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer py-1 hover:bg-gray-700/50 rounded px-2 -mx-2">
-                  <input
-                    type="radio"
-                    name="resolution"
-                    value="source"
-                    checked={selectedResolution === 'source'}
-                    onChange={(e) => setSelectedResolution(e.target.value as any)}
-                    className="text-purple-600 focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-white">Source Resolution</span>
-                </label>
+              <div className="grid grid-cols-2 gap-2">
+                {resolutionPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => setSelectedResolution(preset)}
+                    className={`px-3 py-2 rounded border transition-colors text-sm ${
+                      selectedResolution?.label === preset.label
+                        ? 'bg-purple-600 border-purple-500 text-white'
+                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <div className="font-medium">{preset.label}</div>
+                    <div className="text-xs opacity-75">{preset.width} × {preset.height}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Canvas Size Info */}
+            <div className="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600">
+              <div className="text-sm text-gray-400 mb-1">Canvas Size</div>
+              <div className="text-lg font-semibold text-white">
+                {canvasWidth} × {canvasHeight}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {selectedResolution && `Content will be scaled to ${selectedResolution.width} × ${selectedResolution.height}`}
               </div>
             </div>
 

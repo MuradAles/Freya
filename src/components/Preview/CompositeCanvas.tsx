@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useMediaStore } from '../../store/mediaStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { useCanvasRendering } from '../../hooks/useCanvasRendering';
 import { useCanvasInteractions } from '../../hooks/useCanvasInteractions';
 import { CanvasControls } from './CanvasControls';
@@ -14,13 +15,13 @@ interface CompositeCanvasProps {
 const RENDER_SCALE_STORAGE_KEY = 'freya-canvas-render-scale';
 
 export default function CompositeCanvas({ playheadPosition, isPlaying }: CompositeCanvasProps) {
-  const { tracks } = useTimelineStore();
+  const { tracks, canvasWidth, canvasHeight } = useTimelineStore();
   const { getMediaById } = useMediaStore();
+  const { canvasColor, setCanvasColor } = useSettingsStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // UI state
   const [showGrid, setShowGrid] = useState(true);
-  const [canvasColor, setCanvasColor] = useState('#000000');
   
   // Load render scale from localStorage or default to 2
   const [renderScale, setRenderScale] = useState(() => {
@@ -32,10 +33,6 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
   useEffect(() => {
     localStorage.setItem(RENDER_SCALE_STORAGE_KEY, renderScale.toString());
   }, [renderScale]);
-
-  // Canvas dimensions (logical size - actual rendering will be at higher resolution)
-  const CANVAS_WIDTH = 1920;
-  const CANVAS_HEIGHT = 1080;
 
   // Get all clips at playhead - inline to avoid recreation issues
   const getClipsAtPlayhead = () => {
@@ -53,19 +50,19 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
       });
     });
 
-    // Sort by track order (lower = background, higher = foreground)
-    return clips.sort((a, b) => a.trackOrder - b.trackOrder);
+    // Sort by track order (lower = foreground/on top, higher = background)
+    return clips.sort((a, b) => b.trackOrder - a.trackOrder);
   };
 
   // Use rendering hook
   useCanvasRendering({
     canvasRef,
-          playheadPosition,
-          isPlaying,
+    playheadPosition,
+    isPlaying,
     showGrid,
     canvasColor,
-    CANVAS_WIDTH,
-    CANVAS_HEIGHT,
+    CANVAS_WIDTH: canvasWidth,
+    CANVAS_HEIGHT: canvasHeight,
     RENDER_SCALE: renderScale,
   });
 
@@ -82,8 +79,8 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
     handleMouseLeave,
   } = useCanvasInteractions({
     canvasRef,
-    CANVAS_WIDTH,
-    CANVAS_HEIGHT,
+    CANVAS_WIDTH: canvasWidth,
+    CANVAS_HEIGHT: canvasHeight,
     playheadPosition,
     getClipsAtPlayhead,
   });
@@ -111,7 +108,7 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
 
       <div 
         ref={wrapperRef}
-        className="w-full h-full overflow-hidden"
+        className="w-full h-full overflow-hidden bg-gray-900 flex items-center justify-center"
         style={{
           transform: `translate(${canvasPan.x}px, ${canvasPan.y}px) scale(${canvasZoom})`,
           transformOrigin: 'center center',
@@ -123,13 +120,12 @@ export default function CompositeCanvas({ playheadPosition, isPlaying }: Composi
       >
         <canvas
           ref={canvasRef}
-          width={CANVAS_WIDTH * renderScale}
-          height={CANVAS_HEIGHT * renderScale}
-          className="w-full h-full object-contain"
+          width={canvasWidth * renderScale}
+          height={canvasHeight * renderScale}
+          className="object-contain"
           style={{
-            backgroundColor: canvasColor,
-            width: '100%',
-            height: '100%',
+            maxWidth: '100%',
+            maxHeight: '100%',
           }}
         />
       </div>

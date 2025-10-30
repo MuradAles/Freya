@@ -33,8 +33,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMediaDuration: (filePath: string) => ipcRenderer.invoke('file:getDuration', filePath),
 
   // Export video
-  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string) => 
-    ipcRenderer.invoke('export:start', tracks, mediaAssets, outputPath, resolution),
+  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string, canvasWidth?: number, canvasHeight?: number, quality?: 'low' | 'medium' | 'high', canvasColor?: string) => 
+    ipcRenderer.invoke('export:start', tracks, mediaAssets, outputPath, resolution, canvasWidth, canvasHeight, quality, canvasColor),
 
   // Recording
   getRecordingSources: () => ipcRenderer.invoke('recording:getSources'),
@@ -49,6 +49,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // System audio loopback (electron-audio-loopback)
   enableLoopbackAudio: () => ipcRenderer.invoke('enable-loopback-audio'),
   disableLoopbackAudio: () => ipcRenderer.invoke('disable-loopback-audio'),
+
+  // AI Generation
+  generateAIImage: (apiKey: string, prompt: string, model: string) =>
+    ipcRenderer.invoke('ai:generateImage', apiKey, prompt, model),
+  generateAIVideo: (apiKey: string, prompt: string, model: string) =>
+    ipcRenderer.invoke('ai:generateVideo', apiKey, prompt, model),
+
+  // File operations for AI
+  showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) =>
+    ipcRenderer.invoke('dialog:showSaveDialog', options),
+  copyFile: (sourcePath: string, destPath: string) =>
+    ipcRenderer.invoke('file:copy', sourcePath, destPath),
 
   // Listen for export progress
   on: (channel: string, callback: (...args: any[]) => void) => {

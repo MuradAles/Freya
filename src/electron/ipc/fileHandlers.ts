@@ -183,12 +183,49 @@ export function setupFileHandlers() {
           resolve(0);
           return;
         }
-        
+
         const duration = metadata.format.duration || 0;
         console.log('✅ Got media duration:', duration);
         resolve(duration);
       });
     });
+  });
+
+  // Show save dialog with custom options
+  ipcMain.handle('dialog:showSaveDialog', async (_, options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    const result = await dialog.showSaveDialog({
+      title: options.title || 'Save File',
+      defaultPath: options.defaultPath,
+      filters: options.filters || [{ name: 'All Files', extensions: ['*'] }]
+    });
+
+    if (result.canceled) {
+      return null;
+    }
+
+    return result.filePath;
+  });
+
+  // Copy file from source to destination
+  ipcMain.handle('file:copy', async (_, sourcePath: string, destPath: string) => {
+    try {
+      fs.copyFileSync(sourcePath, destPath);
+      return true;
+    } catch (error) {
+      console.error('Error copying file:', error);
+      return false;
+    }
+  });
+
+  // Delete file
+  ipcMain.handle('file:delete', async (_, filePath: string) => {
+    try {
+      fs.unlinkSync(filePath);
+      return true;
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      return false;
+    }
   });
 }
 

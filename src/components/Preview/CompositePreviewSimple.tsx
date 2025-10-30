@@ -36,7 +36,7 @@ export default function CompositePreviewSimple({ playheadPosition, isPlaying }: 
       });
     });
 
-    return clips.sort((a, b) => b.track.order - a.track.order); // Top track first
+    return clips.sort((a, b) => a.track.order - b.track.order); // Lower order track first (Track 1 on top)
   };
 
   // Update video and audio elements

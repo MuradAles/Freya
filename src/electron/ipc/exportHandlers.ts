@@ -36,11 +36,23 @@ function getFfprobePath(): string {
 ffmpeg.setFfmpegPath(getFfmpegPath());
 ffmpeg.setFfprobePath(getFfprobePath());
 
+// Quality to CRF mapping (lower CRF = higher quality, larger file)
+function getCRFForQuality(quality: 'low' | 'medium' | 'high'): string {
+  const crfMap: Record<'low' | 'medium' | 'high', string> = {
+    'high': '18',   // Visually lossless, largest file
+    'medium': '20', // Good balance (default)
+    'low': '23'     // Smaller file, good quality
+  };
+  return crfMap[quality] || '20';
+}
+
 interface ExportJob {
   tracks: Track[];
   mediaAssets: MediaAsset[];
   outputPath: string;
   resolution: { width: number; height: number };
+  quality: 'low' | 'medium' | 'high';
+  canvasColor: string;
   progressCallback: (progress: number) => void;
 }
 
@@ -53,19 +65,16 @@ interface ClipProcessing {
 
 export function setupExportHandlers() {
   // Handle export start
-  ipcMain.handle('export:start', async (event, tracks: Track[], mediaAssets: MediaAsset[], outputPath: string, resolution: string) => {
-    console.log('🚀 Starting export...', { outputPath, resolution });
+  ipcMain.handle('export:start', async (event, tracks: Track[], mediaAssets: MediaAsset[], outputPath: string, resolution: string, canvasWidth?: number, canvasHeight?: number, quality: 'low' | 'medium' | 'high' = 'medium', canvasColor?: string) => {
+    // Ensure canvasColor is always a valid hex color
+    const validCanvasColor = (canvasColor && /^#[0-9A-Fa-f]{6}$/.test(canvasColor)) ? canvasColor : '#000000';
+    
+    console.log('🚀 Starting export...', { outputPath, resolution, canvasWidth, canvasHeight, quality, canvasColor, validCanvasColor });
     console.log(`📊 Exporting ${tracks.length} tracks with ${mediaAssets.length} media assets`);
 
-    // Map resolution string to dimensions
-    const resolutionMap: Record<string, { width: number; height: number }> = {
-      '720p': { width: 1280, height: 720 },
-      '1080p': { width: 1920, height: 1080 },
-      '4k': { width: 3840, height: 2160 },
-      'source': { width: 1920, height: 1080 } // Default
-    };
-
-    const res = resolutionMap[resolution] || resolutionMap['1080p'];
+    // Use provided dimensions directly (they're already calculated to maintain aspect ratio)
+    const res = { width: canvasWidth || 1920, height: canvasHeight || 1080 };
+    console.log(`📐 Export resolution: ${res.width}×${res.height} (quality: ${quality}, background: ${validCanvasColor})`);
 
     try {
       await exportTimeline({
@@ -73,6 +82,8 @@ export function setupExportHandlers() {
         mediaAssets,
         outputPath,
         resolution: res,
+        quality,
+        canvasColor: validCanvasColor,
         progressCallback: (progress) => {
           // console.log(`📈 Export progress: ${progress}%`);
           // Send progress to renderer
@@ -90,7 +101,11 @@ export function setupExportHandlers() {
 }
 
 async function exportTimeline(job: ExportJob): Promise<void> {
-  const { tracks, mediaAssets, outputPath, resolution } = job;
+  const { tracks, mediaAssets, outputPath, resolution, quality } = job;
+  
+  // Log quality settings for debugging
+  const crfValue = getCRFForQuality(quality);
+  console.log(`🎬 Export settings: Quality=${quality}, CRF=${crfValue}, Resolution=${resolution.width}×${resolution.height}, Background=${job.canvasColor}`);
   
   // Get all video/audio clips from all tracks
   const allClips: Array<{ clip: TimelineClip; media: MediaAsset; trackOrder: number }> = [];
@@ -250,15 +265,24 @@ async function buildSimpleComposition(
       command.input(audioClip.tempFile);
     });
 
+    const crfValue = getCRFForQuality(job.quality);
+    console.log(`📊 Using CRF ${crfValue} for quality setting: ${job.quality}`);
+    console.log(`📐 Target resolution: ${job.resolution.width}×${job.resolution.height}`);
+    
+    // Force re-encoding by scaling to target resolution
+    // This ensures CRF quality settings are actually applied (concat demuxer can't optimize this away)
     command
+      .videoFilters(`scale=${job.resolution.width}:${job.resolution.height}`)
       .videoCodec('libx264')
       .audioCodec('aac')
       .audioBitrate('192k')
-      .outputOptions(['-preset', 'medium', '-crf', '20']) // Changed from 'slow' to 'medium' for faster exports
+      .outputOptions('-preset', 'medium')
+      .outputOptions('-crf', crfValue)
       .saveToFile(outputPath);
 
     command.on('start', (cmdLine) => {
       console.log('🔥 FFmpeg command:', cmdLine);
+      console.log(`📊 Verify CRF in command above - should be ${crfValue} for ${job.quality} quality`);
     });
 
     command.on('end', () => {
@@ -316,10 +340,10 @@ async function buildMultiTrackComposition(
 ): Promise<void> {
   console.log(`\n🎬 BUILDING MULTI-TRACK COMPOSITION:`);
   
-  // Sort video clips by track order first (higher track = on top), then by z-index, then by start time
+  // Sort video clips by track order first (lower track = on top), then by z-index, then by start time
   videoClips.sort((a, b) => {
-    // Higher track order should be drawn last (on top)
-    if (a.trackOrder !== b.trackOrder) return a.trackOrder - b.trackOrder;
+    // Lower track order should be drawn last (on top)
+    if (a.trackOrder !== b.trackOrder) return b.trackOrder - a.trackOrder;
     
     // Then sort by z-index
     const zA = a.clip.position?.zIndex ?? 0;
@@ -355,9 +379,20 @@ async function buildMultiTrackComposition(
       console.log(`   Video clips with audio: ${audioFlags.slice(0, videoClips.length).filter(Boolean).length}/${videoClips.length}`);
       console.log(`   Audio-only clips with audio: ${audioFlags.slice(videoClips.length).filter(Boolean).length}/${audioClips.length}`);
 
-      // Create base canvas (black background)
+      // Convert hex color to RGB for FFmpeg (format: 0xRRGGBB)
+      // Remove # if present and convert to RGB format
+      const bgColor = job.canvasColor || '#000000';
+      const hexColor = bgColor.replace('#', '');
+      const r = parseInt(hexColor.substring(0, 2), 16);
+      const g = parseInt(hexColor.substring(2, 4), 16);
+      const b = parseInt(hexColor.substring(4, 6), 16);
+      const colorValue = `0x${hexColor.toUpperCase()}`;
+      
+      console.log(`🎨 Using background color: ${bgColor} → ${colorValue}`);
+      
+      // Create base canvas with custom background color
       const command = ffmpeg()
-        .input(`color=black:s=${resolution.width}x${resolution.height}:r=30`)
+        .input(`color=${colorValue}:s=${resolution.width}x${resolution.height}:r=30`)
         .inputOptions(['-f', 'lavfi', '-t', maxEndTime.toString()]);
 
       // Add all video clips as inputs (these might have audio)
@@ -518,6 +553,9 @@ async function buildMultiTrackComposition(
       // Determine if we have any audio outputs
       const hasAudioOutput = delayedAudioInputs.length > 0;
 
+      const crfValue = getCRFForQuality(job.quality);
+      console.log(`📊 Using CRF ${crfValue} for quality setting: ${job.quality}`);
+      
       command
         .complexFilter(complexFilter)
         .outputOptions([
@@ -526,7 +564,7 @@ async function buildMultiTrackComposition(
           hasAudioOutput ? '[aout]' : '',
           '-c:v', 'libx264',
           '-preset', 'medium', // Changed from 'slow' to 'medium' for faster exports (3-5x speed boost)
-          '-crf', '20', // Changed from 18 to 20 for faster encoding with minimal quality loss
+          '-crf', crfValue,
           ...(hasAudioOutput ? ['-c:a', 'aac', '-b:a', '192k'] : []),
           '-t', maxEndTime.toString(),
           '-ignore_unknown' // Handle missing audio streams gracefully
@@ -535,6 +573,7 @@ async function buildMultiTrackComposition(
 
       command.on('start', (cmdLine) => {
         console.log('🔥 FFmpeg command:', cmdLine);
+        console.log(`📊 Verify CRF in command above - should be ${crfValue} for ${job.quality} quality`);
       });
 
       command.on('end', () => {

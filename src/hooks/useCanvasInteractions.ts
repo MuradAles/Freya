@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useTimelineStore } from '../store/timelineStore';
+import { useMediaStore } from '../store/mediaStore';
 import { isPointInHandle } from '../utils/canvasDrawing';
 
 interface UseCanvasInteractionsProps {
@@ -21,6 +22,7 @@ export const useCanvasInteractions = ({
   getClipsAtPlayhead,
 }: UseCanvasInteractionsProps) => {
   const { selectedClipIds } = useTimelineStore();
+  const { getMediaById } = useMediaStore();
 
   // Zoom and pan state
   const [canvasZoom, setCanvasZoom] = useState(1);
@@ -345,7 +347,7 @@ export const useCanvasInteractions = ({
       const initialHeight = initialClipPositionRef.current.height || 0.5;
 
       // Get the actual media to calculate true aspect ratio
-      const currentClipMedia = getMediaByIdRef.current(currentClip.assetId);
+      const currentClipMedia = getMediaById(currentClip.assetId);
       const CANVAS_ASPECT = CANVAS_WIDTH / CANVAS_HEIGHT; // 1.778 for 16:9
 
       // Calculate aspect ratio in normalized coordinates (accounts for canvas aspect)

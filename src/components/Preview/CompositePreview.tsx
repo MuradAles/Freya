@@ -18,7 +18,7 @@ interface ClipLayer {
 }
 
 export default function CompositePreview({ playheadPosition, isPlaying }: CompositePreviewProps) {
-  const { tracks } = useTimelineStore();
+  const { tracks, canvasWidth, canvasHeight } = useTimelineStore();
   const { getMediaById } = useMediaStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [layers, setLayers] = useState<ClipLayer[]>([]);
@@ -57,8 +57,8 @@ export default function CompositePreview({ playheadPosition, isPlaying }: Compos
       });
     });
 
-    // Sort by track order (lower order = background, higher = foreground)
-    visibleLayers.sort((a, b) => a.trackOrder - b.trackOrder);
+    // Sort by track order (lower order = foreground/on top, higher = background)
+    visibleLayers.sort((a, b) => b.trackOrder - a.trackOrder);
     setLayers(visibleLayers);
   }, [playheadPosition, tracks, getMediaById]);
 
@@ -188,7 +188,7 @@ export default function CompositePreview({ playheadPosition, isPlaying }: Compos
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Find the topmost video layer (highest track order with video)
+      // Find the topmost video layer (lowest track order with video, which is last in sorted array)
       let topVideoLayer: ClipLayer | null = null;
       for (let i = layers.length - 1; i >= 0; i--) {
         if (layers[i].mediaType === 'video') {
@@ -281,8 +281,8 @@ export default function CompositePreview({ playheadPosition, isPlaying }: Compos
   return (
     <canvas
       ref={canvasRef}
-      width={1920}
-      height={1080}
+      width={canvasWidth}
+      height={canvasHeight}
       className="max-w-full max-h-full object-contain"
       style={{ backgroundColor: 'black' }}
     />

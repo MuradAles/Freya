@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Film, Plus, Minus, Trash2 } from 'lucide-react';
+import { Film, Plus, Minus, Trash2, Sparkles } from 'lucide-react';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useMediaStore } from '../../store/mediaStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import ExportDialog, { type ExportSettings } from '../Dialogs/ExportDialog';
+import AIVideoDialog from '../Dialogs/AIVideoDialog';
 import ClipContextMenu from './ClipContextMenu';
 import type { TimelineClip } from '../../types/timeline';
+import { processMediaFile } from '../../utils/fileHandling';
 
 const TRACK_HEIGHT = 40;
 const TRACK_LABEL_WIDTH = 100;
@@ -97,6 +100,9 @@ export default function TimelineNew() {
     y: number;
     clipId: string;
   } | null>(null);
+
+  // Dialog states
+  const [showAIVideoDialog, setShowAIVideoDialog] = useState(false);
 
   // Track viewport width
   useEffect(() => {
@@ -259,9 +265,8 @@ export default function TimelineNew() {
     if (!track) return;
 
     // Calculate initial size preserving aspect ratio
-    // Canvas is 1920x1080, we want clips to be reasonably sized (e.g., 50% of canvas width)
-    const CANVAS_WIDTH = 1920;
-    const CANVAS_HEIGHT = 1080;
+    // Get canvas dimensions from store
+    const { canvasWidth: CANVAS_WIDTH, canvasHeight: CANVAS_HEIGHT } = useTimelineStore.getState();
     const CANVAS_ASPECT = CANVAS_WIDTH / CANVAS_HEIGHT; // 16:9 = 1.778
     const targetSizePercent = 0.5; // Target 50% of canvas dimensions
 
@@ -752,6 +757,13 @@ export default function TimelineNew() {
             <Plus className="w-4 h-4 inline mr-1" />
             Track
           </button>
+          <button
+            onClick={() => setShowAIVideoDialog(true)}
+            className="p-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded"
+            title="AI Image Generation"
+          >
+            <Sparkles className="w-4 h-4 text-white" />
+          </button>
           <div className="relative" ref={exportDialogRef}>
             <div className="relative">
               <button 
@@ -790,7 +802,10 @@ export default function TimelineNew() {
                   
                   try {
                     const electronAPI = (window as any).electronAPI;
-                    await electronAPI.exportVideo(tracks, mediaLibrary, settings.outputPath, settings.resolution);
+                    const { canvasColor } = useSettingsStore.getState();
+                    console.log('🎨 Exporting with canvas color:', canvasColor);
+                    // Use 'custom' as resolution parameter for backward compatibility, always use canvas dimensions
+                    await electronAPI.exportVideo(tracks, mediaLibrary, settings.outputPath, 'custom', settings.customWidth, settings.customHeight, 'medium', canvasColor || '#000000');
                     
                     // Reset after successful export
                     setTimeout(() => {
@@ -816,7 +831,10 @@ export default function TimelineNew() {
           {/* Track Labels */}
           <div className="flex-shrink-0 bg-gray-750" style={{ width: TRACK_LABEL_WIDTH }}>
             <div style={{ height: RULER_HEIGHT }} className="border-b border-gray-700" />
-            {tracks.map((track, index) => (
+            {tracks
+              .slice()
+              .sort((a, b) => a.order - b.order) // Sort so Track 1 (lower order) appears at top of timeline
+              .map((track, index) => (
               <div
                 key={track.id}
                 style={{ height: TRACK_HEIGHT }}
@@ -876,7 +894,10 @@ export default function TimelineNew() {
 
             {/* Tracks */}
             <div className="relative" style={{ width: timelineWidth }}>
-              {tracks.map((track, trackIndex) => (
+              {tracks
+                .slice()
+                .sort((a, b) => a.order - b.order) // Sort so Track 1 (lower order) appears at top of timeline
+                .map((track, trackIndex) => (
                 <div
                   key={track.id}
                   className={`relative border-b border-gray-700 transition-colors ${
@@ -1051,6 +1072,26 @@ export default function TimelineNew() {
           />
         );
       })()}
+
+      {/* Settings Dialog */}
+      {/* AI Video Dialog */}
+      {showAIVideoDialog && (
+        <AIVideoDialog
+          onClose={() => setShowAIVideoDialog(false)}
+          onVideoGenerated={async (filePath) => {
+            try {
+              console.log('✅ AI content generated:', filePath);
+              // Process and add to media library
+              const mediaAsset = await processMediaFile(filePath);
+              useMediaStore.getState().addMedia(mediaAsset);
+              console.log('✅ AI content added to media library:', mediaAsset.name);
+            } catch (err) {
+              console.error('Failed to add AI content to media library:', err);
+            }
+            setShowAIVideoDialog(false);
+          }}
+        />
+      )}
 
     </div>
   );

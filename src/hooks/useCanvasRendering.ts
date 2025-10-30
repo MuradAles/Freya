@@ -130,8 +130,8 @@ export const useCanvasRendering = ({
       });
     });
 
-    // Sort by track order (lower = background, higher = foreground)
-    return clips.sort((a, b) => a.trackOrder - b.trackOrder);
+    // Sort by track order (lower = foreground/on top, higher = background)
+    return clips.sort((a, b) => b.trackOrder - a.trackOrder);
   };
 
   // Update video and audio elements based on tracks

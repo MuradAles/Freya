@@ -115,6 +115,8 @@ export default function PreviewCanvas() {
     if (!showTimelinePlayback) {
       setIsPlaying(false);
       setCurrentTime(0);
+      // Reset duration - will be set by VideoPlayer's onDurationUpdate when metadata loads
+      setDuration(0);
     }
   }, [selectedMediaId, showTimelinePlayback]);
 

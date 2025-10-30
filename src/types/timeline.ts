@@ -28,7 +28,7 @@ export interface TimelineClip {
 
 export interface Track {
   id: string;
-  order: number;                 // Display order (higher = on top)
+  order: number;                 // Display order (lower = on top, Track 1 is on top)
   clips: TimelineClip[];
   locked: boolean;               // Prevent editing
   visible: boolean;              // Show/hide in preview

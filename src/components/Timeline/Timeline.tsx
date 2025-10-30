@@ -128,7 +128,7 @@ export default function Timeline() {
             </div>
           ) : (
             tracks
-              .sort((a, b) => b.order - a.order) // Higher order on top
+              .sort((a, b) => a.order - b.order) // Lower order on top (Track 1 is on top)
               .map(track => (
                 <Track
                   key={track.id}

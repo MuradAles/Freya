@@ -17,7 +17,7 @@ export interface ElectronAPI {
   generateThumbnail: (filePath: string, type: string) => Promise<string | null>;
   readFileAsDataURL: (filePath: string) => Promise<string | null>;
   getMediaDuration: (filePath: string) => Promise<number>;
-  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string) => Promise<{ success: boolean }>;
+  exportVideo: (tracks: any[], mediaAssets: any[], outputPath: string, resolution: string, canvasWidth?: number, canvasHeight?: number, quality?: 'low' | 'medium' | 'high', canvasColor?: string) => Promise<{ success: boolean }>;
   getRecordingSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>;
   saveRecording: (blobData: string, filePath: string) => Promise<{ success: boolean; filePath?: string; fileSize?: number; error?: string }>;
   showRecordingSaveDialog: (defaultFilename: string) => Promise<string | null>;
@@ -29,6 +29,12 @@ export interface ElectronAPI {
   // System audio loopback (electron-audio-loopback)
   enableLoopbackAudio: () => Promise<void>;
   disableLoopbackAudio: () => Promise<void>;
+  // AI Generation
+  generateAIImage: (apiKey: string, prompt: string, model: string) => Promise<{ success: boolean; imagePath?: string; error?: string }>;
+  generateAIVideo: (apiKey: string, prompt: string, model: string) => Promise<{ success: boolean; videoPath?: string; error?: string }>;
+  // File operations for AI
+  showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
+  copyFile: (sourcePath: string, destPath: string) => Promise<boolean>;
 }
 
 declare global {

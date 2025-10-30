@@ -10,6 +10,8 @@ interface TimelineStore {
   zoom: number;
   duration: number;
   isUserSeeking: boolean; // Track if user is manually scrubbing
+  canvasWidth: number; // Canvas dimensions
+  canvasHeight: number;
   
   // Actions
   addTrack: () => void;
@@ -23,6 +25,9 @@ interface TimelineStore {
   selectClips: (clipIds: string[]) => void;
   setZoom: (zoom: number) => void;
   splitClip: (clipId: string, splitTime: number) => void;
+  setCanvasWidth: (width: number) => void;
+  setCanvasHeight: (height: number) => void;
+  setCanvasDimensions: (width: number, height: number) => void;
 }
 
 // Helper to generate IDs
@@ -40,6 +45,8 @@ export const useTimelineStore = create<TimelineStore>()(
       zoom: 20, // pixels per second (default: 20px/s allows viewing ~3 min in 3600px)
       duration: 0,
       isUserSeeking: false,
+      canvasWidth: 1920, // Default canvas dimensions
+      canvasHeight: 1080,
       
       addTrack: () => set((state) => {
         const newTrack: Track = {
@@ -187,6 +194,125 @@ export const useTimelineStore = create<TimelineStore>()(
             break;
           }
         }
+      },
+      
+      setCanvasWidth: (width) => {
+        const state = get();
+        const oldWidth = state.canvasWidth;
+        const newWidth = Math.max(128, Math.min(7680, width));
+        
+        // Adjust all clip positions to maintain aspect ratio
+        const scale = newWidth / oldWidth;
+        set({
+          canvasWidth: newWidth,
+          tracks: state.tracks.map(track => ({
+            ...track,
+            clips: track.clips.map(clip => {
+              if (clip.position) {
+                // Convert to pixel coordinates with old canvas
+                const oldPixelWidth = clip.position.width * oldWidth;
+                const oldPixelHeight = clip.position.height * state.canvasHeight;
+                if (oldPixelHeight === 0) return clip; // Avoid division by zero
+                const pixelAspectRatio = oldPixelWidth / oldPixelHeight;
+                
+                // Scale width proportionally, maintain aspect ratio
+                const newPixelWidth = oldPixelWidth * scale;
+                const newPixelHeight = newPixelWidth / pixelAspectRatio;
+                
+                return {
+                  ...clip,
+                  position: {
+                    ...clip.position,
+                    width: newPixelWidth / newWidth,
+                    height: newPixelHeight / state.canvasHeight,
+                  }
+                };
+              }
+              return clip;
+            })
+          }))
+        });
+      },
+      setCanvasHeight: (height) => {
+        const state = get();
+        const oldHeight = state.canvasHeight;
+        const newHeight = Math.max(128, Math.min(4320, height));
+        
+        // Adjust all clip positions to maintain aspect ratio
+        const scale = newHeight / oldHeight;
+        set({
+          canvasHeight: newHeight,
+          tracks: state.tracks.map(track => ({
+            ...track,
+            clips: track.clips.map(clip => {
+              if (clip.position) {
+                // Convert to pixel coordinates with old canvas
+                const oldPixelWidth = clip.position.width * state.canvasWidth;
+                const oldPixelHeight = clip.position.height * oldHeight;
+                if (oldPixelHeight === 0) return clip; // Avoid division by zero
+                const pixelAspectRatio = oldPixelWidth / oldPixelHeight;
+                
+                // Scale height proportionally, maintain aspect ratio
+                const newPixelHeight = oldPixelHeight * scale;
+                const newPixelWidth = newPixelHeight * pixelAspectRatio;
+                
+                return {
+                  ...clip,
+                  position: {
+                    ...clip.position,
+                    width: newPixelWidth / state.canvasWidth,
+                    height: newPixelHeight / newHeight,
+                  }
+                };
+              }
+              return clip;
+            })
+          }))
+        });
+      },
+      setCanvasDimensions: (width, height) => {
+        const state = get();
+        const oldWidth = state.canvasWidth;
+        const oldHeight = state.canvasHeight;
+        const newWidth = Math.max(128, Math.min(7680, width));
+        const newHeight = Math.max(128, Math.min(4320, height));
+        
+        // Calculate scale factors - use geometric mean to preserve aspect ratio better
+        const scaleX = newWidth / oldWidth;
+        const scaleY = newHeight / oldHeight;
+        const scale = Math.sqrt(scaleX * scaleY);
+        
+        set({
+          canvasWidth: newWidth,
+          canvasHeight: newHeight,
+          tracks: state.tracks.map(track => ({
+            ...track,
+            clips: track.clips.map(clip => {
+              if (clip.position) {
+                // Convert to pixel coordinates with old canvas
+                const oldPixelWidth = clip.position.width * oldWidth;
+                const oldPixelHeight = clip.position.height * oldHeight;
+                if (oldPixelHeight === 0) return clip; // Avoid division by zero
+                const pixelAspectRatio = oldPixelWidth / oldPixelHeight;
+                
+                // Scale maintaining aspect ratio
+                const newPixelWidth = oldPixelWidth * scale;
+                const newPixelHeight = newPixelWidth / pixelAspectRatio;
+                
+                // Convert back to normalized coordinates
+                return {
+                  ...clip,
+                  position: {
+                    ...clip.position,
+                    width: newPixelWidth / newWidth,
+                    height: newPixelHeight / newHeight,
+                  }
+                };
+              }
+              return clip;
+            })
+          }))
+        });
       },
     }),
     {
