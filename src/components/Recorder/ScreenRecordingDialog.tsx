@@ -1,14 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Monitor } from 'lucide-react';
-import CustomAreaSelector from './CustomAreaSelector';
 
 interface ScreenRecordingDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onStart: (config: {
-    screenType: 'full' | 'window' | 'custom';
+    screenType: 'full' | 'window';
     windowId?: string;
-    customArea?: { x: number; y: number; width: number; height: number; screenId: string };
     includeMicrophone: boolean;
     microphoneId?: string;
     includeSystemAudio: boolean;
@@ -17,7 +15,7 @@ interface ScreenRecordingDialogProps {
 }
 
 export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: ScreenRecordingDialogProps) {
-  const [screenType, setScreenType] = useState<'full' | 'window' | 'custom'>('full');
+  const [screenType, setScreenType] = useState<'full' | 'window'>('full');
   const [selectedWindowId, setSelectedWindowId] = useState<string>('');
   const [windows, setWindows] = useState<Array<{ id: string; name: string; thumbnail: string }>>([]);
   const [includeMicrophone, setIncludeMicrophone] = useState(true); // Default: ON
@@ -27,8 +25,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
   const [includeCamera, setIncludeCamera] = useState(false); // Camera overlay for screen recording
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
-  const [showCustomAreaSelector, setShowCustomAreaSelector] = useState(false);
-  const [customArea, setCustomArea] = useState<{ x: number; y: number; width: number; height: number; screenId: string } | null>(null);
   
   // Live preview
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -59,15 +55,13 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
         setIsLoadingPreview(true);
 
         if (screenType === 'full') {
-          // Skip preview for full screen - will use picker during actual recording
+          // Skip preview_long for full screen - will use picker during actual recording
           // Showing preview would trigger the OS picker dialog which is annoying
-          console.log('⏭️  Skipping full screen preview (will use picker when recording starts)');
           setPreviewStream(null);
           setIsLoadingPreview(false);
           return;
         } else if (screenType === 'window' && selectedWindowId) {
           // Start window preview using getUserMedia with Electron constraints
-          console.log('🎥 Starting window preview for:', selectedWindowId);
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               // @ts-ignore
@@ -81,7 +75,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
         }
 
         if (stream) {
-          console.log('✅ Preview stream started');
           setPreviewStream(stream);
         }
       } catch (err) {
@@ -105,7 +98,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
-        console.log('🛑 Cleaned up preview stream');
       }
       setPreviewStream(null);
     };
@@ -167,19 +159,10 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     }
   };
 
-  const handleScreenTypeChange = (type: 'full' | 'window' | 'custom') => {
+  const handleScreenTypeChange = (type: 'full' | 'window') => {
     setScreenType(type);
     if (type === 'window' && windows.length === 0) {
       loadWindows();
-    }
-    if (type !== 'custom') {
-      setCustomArea(null);
-    }
-    
-    // Stop preview when switching to custom (since it requires area selection)
-    if (type === 'custom' && previewStream) {
-      previewStream.getTracks().forEach(track => track.stop());
-      setPreviewStream(null);
     }
   };
 
@@ -192,22 +175,9 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     onClose();
   };
 
-  const handleAreaSelect = (area: { x: number; y: number; width: number; height: number; screenId: string }) => {
-    setCustomArea(area);
-    setShowCustomAreaSelector(false);
-  };
-
-  const handleOpenAreaSelector = () => {
-    setShowCustomAreaSelector(true);
-  };
-
   const handleStart = () => {
     if (screenType === 'window' && !selectedWindowId) {
       alert('Please select a window');
-      return;
-    }
-    if (screenType === 'custom' && !customArea) {
-      alert('Please select a custom area');
       return;
     }
     if (includeMicrophone && !selectedMicrophoneId) {
@@ -222,7 +192,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
     onStart({
       screenType,
       windowId: screenType === 'window' ? selectedWindowId : undefined,
-      customArea: screenType === 'custom' ? customArea! : undefined,
       includeMicrophone,
       microphoneId: includeMicrophone ? selectedMicrophoneId : undefined,
       includeSystemAudio, // Pass system audio toggle
@@ -290,46 +259,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
                     </option>
                   ))}
                 </select>
-              </div>
-            )}
-
-            <label className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
-              <input
-                type="radio"
-                name="screenType"
-                value="custom"
-                checked={screenType === 'custom'}
-                onChange={() => handleScreenTypeChange('custom')}
-                className="w-5 h-5 text-purple-600"
-              />
-              <span className="text-white">Custom Area (Click & Drag)</span>
-            </label>
-
-            {/* Custom Area Button */}
-            {screenType === 'custom' && (
-              <div className="ml-8 space-y-2">
-                {!customArea ? (
-                  <button
-                    onClick={handleOpenAreaSelector}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors"
-                  >
-                    Select Area
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    <button
-                      onClick={handleOpenAreaSelector}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                    >
-                      Reselect Area
-                    </button>
-                    <div className="text-sm text-gray-300 space-y-1">
-                      <p className="font-medium">Selected area:</p>
-                      <p className="text-gray-400">{customArea.width}×{customArea.height}px</p>
-                      <p className="text-gray-400">Position: ({customArea.x}, {customArea.y})</p>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             </div>
@@ -452,9 +381,7 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
                     <p className="text-sm">
                       {screenType === 'full'
                         ? 'Preview not available for full screen (you\'ll select screen when recording starts)'
-                        : screenType === 'window'
-                        ? 'Select a window to see preview'
-                        : 'Screen preview will show here'}
+                        : 'Select a window to see preview'}
                     </p>
                   </div>
                 </div>
@@ -480,12 +407,6 @@ export default function ScreenRecordingDialog({ isOpen, onClose, onStart }: Scre
         </div>
       </div>
 
-      {/* Custom Area Selector Overlay */}
-      <CustomAreaSelector
-        isOpen={showCustomAreaSelector}
-        onClose={() => setShowCustomAreaSelector(false)}
-        onConfirm={handleAreaSelect}
-      />
     </div>
   );
 }

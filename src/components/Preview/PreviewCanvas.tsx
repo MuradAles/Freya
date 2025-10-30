@@ -183,7 +183,7 @@ export default function PreviewCanvas() {
   }, [isPlaying, showTimelinePlayback]);
 
   return (
-    <div className="w-full h-full bg-black flex flex-col relative">
+    <div className="w-full h-full bg-gray-900 flex flex-col relative">
       {/* Preview Area */}
       <div className="flex-1 flex items-center justify-center relative overflow-hidden">
         {showTimelinePlayback ? (

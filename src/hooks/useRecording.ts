@@ -10,13 +10,11 @@ const viewportDimensionsRef = { current: { width: 1920, height: 1080 } };
 
 export interface RecordingConfig {
   // Screen recording
-  screenType?: 'full' | 'window' | 'custom';
+  screenType?: 'full' | 'window';
   windowId?: string;
-  customArea?: { x: number; y: number; width: number; height: number; screenId: string };
 
   // Camera recording
   cameraId?: string;
-  cameraPosition?: string; // Used for camera-only recording (preset positions)
   cameraOverlay?: { x: number; y: number; width: number; height: number }; // Used for screen + camera (draggable position)
 
   // Audio recording
@@ -69,8 +67,6 @@ export function useRecording(): UseRecordingReturn {
 
   const startRecording = useCallback(async (config: RecordingConfig) => {
     try {
-      console.log('🎬 startRecording called with config:', config);
-      
       // Reset all state to ensure clean start
       setError(null);
       chunksRef.current = [];
@@ -94,7 +90,6 @@ export function useRecording(): UseRecordingReturn {
           // Don't create separate camera stream for UI preview - removed to prevent buffer conflicts
           // The composited recording stream shows the camera, no need for separate preview
           setCameraStream(null);
-          console.log('✅ Camera stream created - UI preview removed to prevent Windows Media Foundation buffer conflicts');
         } catch (err) {
           console.warn('⚠️ Failed to create camera stream:', err);
           setCameraStream(null);
@@ -104,18 +99,10 @@ export function useRecording(): UseRecordingReturn {
       }
       
       // Create streams based on config (pass shared camera stream to avoid duplicate creation)
-      console.log('📹 Creating recording stream...');
       const stream = await createRecordingStream(config, sharedCameraStream);
-      console.log('✅ Recording stream created:', {
-        hasStream: !!stream,
-        videoTracks: stream.getVideoTracks().length,
-        audioTracks: stream.getAudioTracks().length
-      });
       
       streamRef.current = stream;
-      console.log('📤 Setting recordingStream state...');
       setRecordingStream(stream);
-      console.log('✅ recordingStream state set');
 
       // Use VP9 for best compression (smaller files) or VP8 for speed
       // H.264 provides excellent compression but may not be available in all browsers
@@ -130,7 +117,6 @@ export function useRecording(): UseRecordingReturn {
       for (const mimeType of codecOptions) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
           selectedMimeType = mimeType;
-          console.log('✅ Using codec:', mimeType);
           break;
         }
       }
@@ -144,17 +130,6 @@ export function useRecording(): UseRecordingReturn {
 
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
-
-      // Log what MediaRecorder will actually record
-      console.log('\n🎬 MEDIARECORDER INITIALIZATION:');
-      console.log('   Audio tracks being recorded:', stream.getAudioTracks().length);
-      stream.getAudioTracks().forEach((track: MediaStreamTrack, index) => {
-        console.log(`   ${index + 1}. ${track.kind}: ${track.label}`);
-        console.log(`      - Enabled: ${track.enabled}`);
-        console.log(`      - Muted: ${track.muted}`);
-        console.log(`      - ReadyState: ${track.readyState}`);
-      });
-      console.log('');
 
       // Handle data available event
       recorder.ondataavailable = (event) => {
@@ -170,7 +145,6 @@ export function useRecording(): UseRecordingReturn {
 
       // Note: Don't stop tracks in onstop - keep them running for preview
       recorder.onstop = () => {
-        console.log('MediaRecorder stopped');
       };
 
       // Start recording with smaller chunks for better compression
@@ -210,8 +184,6 @@ export function useRecording(): UseRecordingReturn {
       const handleStop = async () => {
         // Combine all chunks into a single blob
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        
-        console.log('Recording complete, blob size:', blob.size);
         
         // Cleanup - DON'T stop tracks yet, let them stay for preview until dialog closes
         chunksRef.current = [];
@@ -257,7 +229,6 @@ export function useRecording(): UseRecordingReturn {
       }
       
       durationWhenPausedRef.current = recordingDuration;
-      console.log('⏸️ Recording paused');
     } catch (err) {
       console.error('Error pausing recording:', err);
     }
@@ -280,8 +251,6 @@ export function useRecording(): UseRecordingReturn {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setRecordingDuration(pauseDuration + elapsed);
       }, 1000);
-      
-      console.log('▶️ Recording resumed');
     } catch (err) {
       console.error('Error resuming recording:', err);
     }
@@ -294,7 +263,6 @@ export function useRecording(): UseRecordingReturn {
     const audioTracks = streamRef.current.getAudioTracks();
     audioTracks.forEach(track => {
       track.enabled = enabled;
-      console.log(`🎤 Audio track ${track.label} ${enabled ? 'enabled' : 'disabled'}`);
     });
   }, []);
 
@@ -304,7 +272,6 @@ export function useRecording(): UseRecordingReturn {
     if (cameraOverlayPositionRef.current) {
       cameraOverlayPositionRef.current.visible = visible;
     }
-    console.log(`📹 Camera overlay ${visible ? 'shown' : 'hidden'}`);
   }, []);
 
   // Cleanup function to stop all tracks and reset state
@@ -371,14 +338,6 @@ export function useRecording(): UseRecordingReturn {
       width: position.width * scaleX,
       height: position.height * scaleY
     };
-    
-    console.log('📍 Camera overlay position updated:', {
-      viewport: position,
-      screen: cameraOverlayPositionRef.current,
-      scale: { x: scaleX, y: scaleY },
-      screenDimensions: { width: screenWidth, height: screenHeight },
-      viewportDimensions: { width: viewportWidth, height: viewportHeight }
-    });
   }, []);
 
   return {
@@ -422,7 +381,6 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
     if (existingCameraStream) {
       // Reuse the existing camera stream (for screen + camera mode)
       cameraRecordStream = existingCameraStream;
-      console.log('♻️ Reusing existing camera stream for compositing');
     } else {
       // Create new camera stream (for camera-only mode)
       cameraRecordStream = await createCameraStream(config.cameraId);
@@ -442,12 +400,9 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
 
   if (shouldEnableSystemAudio) { // Default to true for screen/camera, false for audio-only
     try {
-      console.log('🔊 Attempting to capture system audio via electron-audio-loopback...');
-
       // Enable loopback audio via IPC
       if (window.electronAPI?.enableLoopbackAudio) {
         await window.electronAPI.enableLoopbackAudio();
-        console.log('✅ Loopback audio enabled via IPC');
 
         // Now getDisplayMedia should include system audio automatically
         // electron-audio-loopback intercepts the call and adds system audio
@@ -459,7 +414,6 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
       console.warn('   System audio will not be included in recording');
     }
   } else {
-    console.log('🔇 System audio capture disabled by user');
     // Disable loopback audio
     if (window.electronAPI?.disableLoopbackAudio) {
       await window.electronAPI.disableLoopbackAudio();
@@ -469,16 +423,9 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
   // Microphone recording
   // If microphoneId is provided, always capture microphone (includeMicrophone flag is optional)
   if (config.microphoneId) {
-    console.log('🎤 Attempting to capture microphone:', config.microphoneId);
-    console.log('   includeMicrophone flag:', config.includeMicrophone);
     try {
       const micStream = await createMicrophoneStream(config.microphoneId);
       streams.push(micStream);
-      console.log('✅ Microphone stream created successfully');
-      console.log('   Audio tracks:', micStream.getAudioTracks().length);
-      micStream.getAudioTracks().forEach((track: MediaStreamTrack) => {
-        console.log(`   - ${track.label} (${track.enabled ? 'enabled' : 'disabled'})`);
-      });
     } catch (err) {
       console.error('❌ Failed to capture microphone:', err);
       throw new Error(`Microphone capture failed: ${err}`);
@@ -494,51 +441,36 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
   const allAudioTracks: MediaStreamTrack[] = [];
   const allVideoTracks: MediaStreamTrack[] = [];
 
-  console.log('\n📊 COLLECTING TRACKS FROM STREAMS:');
-  console.log(`   Total streams: ${streams.length}`);
-
-  streams.forEach((stream, index) => {
-    console.log(`\n   Stream ${index + 1}:`);
+  streams.forEach((stream) => {
     const videoTracks = stream.getVideoTracks();
     const audioTracks = stream.getAudioTracks();
-    console.log(`     - Video tracks: ${videoTracks.length}`);
-    console.log(`     - Audio tracks: ${audioTracks.length}`);
 
     videoTracks.forEach(track => {
       allVideoTracks.push(track);
-      console.log(`     ✓ Collected video track: ${track.label}`);
     });
 
     audioTracks.forEach(track => {
       allAudioTracks.push(track);
-      console.log(`     ✓ Collected audio track: ${track.label}`);
     });
   });
-
-  console.log(`\n🎵 TOTAL AUDIO TRACKS COLLECTED: ${allAudioTracks.length}`);
-  console.log(`📹 TOTAL VIDEO TRACKS COLLECTED: ${allVideoTracks.length}`);
 
   // Mix multiple audio tracks using Web Audio API
   const combinedStream = new MediaStream();
 
   // Handle video tracks - if we have both screen and camera, composite them with canvas
   if (screenStream && cameraRecordStream) {
-    console.log('\n🎨 COMPOSITING SCREEN + CAMERA using Canvas API...');
-    
     // Store screen dimensions for coordinate conversion
     const screenSettings = screenStream.getVideoTracks()[0].getSettings();
     screenDimensionsRef.current = {
       width: screenSettings.width || 1920,
       height: screenSettings.height || 1080
     };
-    console.log('📐 Screen dimensions stored:', screenDimensionsRef.current);
     
     // Store initial viewport dimensions (will be updated on window resize)
     viewportDimensionsRef.current = {
       width: window.innerWidth,
       height: window.innerHeight
     };
-    console.log('📐 Viewport dimensions stored:', viewportDimensionsRef.current);
     
     // Convert initial camera overlay position from viewport to screen coordinates
     let initialOverlayPosition = config.cameraOverlay;
@@ -551,15 +483,10 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
         width: initialOverlayPosition.width * scaleX,
         height: initialOverlayPosition.height * scaleY
       };
-      console.log('📐 Initial overlay position converted:', {
-        viewport: config.cameraOverlay,
-        screen: initialOverlayPosition
-      });
     }
     
     const compositedStream = await compositeScreenAndCamera(screenStream, cameraRecordStream, initialOverlayPosition);
     combinedStream.addTrack(compositedStream.getVideoTracks()[0]);
-    console.log('✅ Screen and camera composited into single video track');
   } else {
     // Add all video tracks normally (single source or camera-only)
     allVideoTracks.forEach(track => {
@@ -569,7 +496,6 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
 
   // Mix audio tracks if we have more than one
   if (allAudioTracks.length > 1) {
-    console.log('\n🔊 MIXING MULTIPLE AUDIO TRACKS using Web Audio API...');
     try {
       const audioContext = new AudioContext();
       const destination = audioContext.createMediaStreamDestination();
@@ -578,13 +504,11 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
       allAudioTracks.forEach((track, index) => {
         const source = audioContext.createMediaStreamSource(new MediaStream([track]));
         source.connect(destination);
-        console.log(`   ✓ Connected audio track ${index + 1}: ${track.label}`);
       });
 
       // Get the mixed audio track
       const mixedAudioTrack = destination.stream.getAudioTracks()[0];
       combinedStream.addTrack(mixedAudioTrack);
-      console.log('✅ Audio tracks mixed successfully into single track');
     } catch (err) {
       console.error('❌ Failed to mix audio tracks:', err);
       console.warn('⚠️  Falling back to first audio track only');
@@ -595,16 +519,9 @@ async function createRecordingStream(config: RecordingConfig, existingCameraStre
     }
   } else if (allAudioTracks.length === 1) {
     // Only one audio track, add it directly
-    console.log('\n🔊 Single audio track - adding directly');
     combinedStream.addTrack(allAudioTracks[0]);
-  } else {
-    console.log('\n🔇 No audio tracks to add');
   }
 
-  console.log(`\n✅ FINAL COMBINED STREAM:`);
-  console.log(`   Video tracks: ${combinedStream.getVideoTracks().length}`);
-  console.log(`   Audio tracks: ${combinedStream.getAudioTracks().length}`);
-  console.log('');
 
   return combinedStream;
 }
@@ -619,8 +536,6 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
   try {
     // If recording a specific window, use getUserMedia with Electron's chromeMediaSource
     if (config.screenType === 'window' && config.windowId) {
-      console.log('📹 Creating window stream for:', config.windowId);
-      console.log('   System audio:', requestAudio ? 'ENABLED' : 'DISABLED');
 
       // Capture window with optional audio request
       stream = await navigator.mediaDevices.getUserMedia({
@@ -640,11 +555,8 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
           }
         } as any : false
       });
-      console.log(`✅ Window stream created (system audio: ${requestAudio ? 'ON' : 'OFF'})`);
     } else {
       // Full screen recording
-      console.log('📹 Creating screen stream with getDisplayMedia...');
-      console.log('   System audio:', requestAudio ? 'ENABLED' : 'DISABLED');
 
       // Request audio only if user wants system audio
       stream = await navigator.mediaDevices.getDisplayMedia({
@@ -655,21 +567,12 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
         },
         audio: requestAudio // Only request audio if system audio is enabled
       } as any);
-      console.log(`✅ Screen stream created (system audio: ${requestAudio ? 'ON' : 'OFF'})`);
     }
 
     // Log stream info
     const videoTrack = stream.getVideoTracks()[0];
     if (videoTrack) {
       const settings = videoTrack.getSettings();
-      console.log('✅ Screen stream created:', {
-        trackId: videoTrack.id,
-        label: videoTrack.label,
-        enabled: videoTrack.enabled,
-        readyState: videoTrack.readyState,
-        muted: videoTrack.muted,
-        settings: settings
-      });
 
       // CRITICAL: Check if track actually has dimensions
       if (!settings.width || !settings.height) {
@@ -679,8 +582,6 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
         console.error('1. Windows screen recording permissions not granted');
         console.error('2. Source ID is invalid');
         console.error('3. Running as administrator (elevation issue)');
-      } else {
-        console.log(`✅ Track dimensions: ${settings.width}x${settings.height}`);
       }
     } else {
       console.warn('⚠️  Stream created but has no video tracks!');
@@ -688,10 +589,6 @@ async function createScreenStream(config: RecordingConfig): Promise<MediaStream>
 
     // Log audio tracks (system audio)
     const audioTracks = stream.getAudioTracks();
-    console.log(`🎵 System audio tracks: ${audioTracks.length}`);
-    audioTracks.forEach((track, index) => {
-      console.log(`   Track ${index + 1}: ${track.label} (${track.enabled ? 'enabled' : 'disabled'})`);
-    });
 
     return stream;
   } catch (error) {
@@ -720,19 +617,6 @@ async function createCameraStream(cameraId: string): Promise<MediaStream> {
       },
     });
     
-    console.log('✅ Camera stream created with optimized settings (15fps max, 640x480)');
-    
-    // Log the actual settings that were applied
-    const videoTrack = stream.getVideoTracks()[0];
-    if (videoTrack) {
-      const settings = videoTrack.getSettings();
-      console.log('📹 Camera settings:', {
-        width: settings.width,
-        height: settings.height,
-        frameRate: settings.frameRate,
-        deviceId: settings.deviceId
-      });
-    }
     
     return stream;
   } catch (error) {
@@ -791,7 +675,6 @@ async function compositeScreenAndCamera(
   canvas.width = videoWidth;
   canvas.height = videoHeight;
   
-  console.log('📐 Canvas dimensions set from video:', { width: videoWidth, height: videoHeight });
   
   // Store screen dimensions for coordinate conversion
   screenDimensionsRef.current = {

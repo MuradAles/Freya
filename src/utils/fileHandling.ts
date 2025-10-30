@@ -29,8 +29,6 @@ export function determineMediaType(filePath: string): 'video' | 'audio' | 'image
 }
 
 export async function processMediaFile(filePath: string): Promise<MediaAsset> {
-  console.log('📂 Processing media file:', filePath);
-  
   const metadata = await window.electronAPI.getFileMetadata(filePath);
   
   if (!metadata) {
@@ -40,32 +38,21 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
   const type = determineMediaType(filePath);
   const id = generateId();
   
-  console.log('📋 File info:', {
-    name: metadata.name,
-    type,
-    size: metadata.size
-  });
-  
   // Generate thumbnail using native Electron API
-  console.log('🖼️  Starting thumbnail generation...');
   let thumbnail = '';
   
   try {
     const nativeThumbnail = await window.electronAPI.generateThumbnail(filePath, type);
     if (nativeThumbnail) {
       thumbnail = nativeThumbnail;
-      console.log('✅ Native thumbnail generated');
     } else {
       // Fallback to renderer-based thumbnail generation
-      console.log('⚠️  Native thumbnail failed, trying renderer method...');
       thumbnail = await generateThumbnail(filePath, type);
     }
   } catch (error) {
     console.error('Error with native thumbnail, using fallback:', error);
     thumbnail = await generateThumbnail(filePath, type);
   }
-  
-  console.log('🖼️  Thumbnail result:', thumbnail ? 'Generated (has data)' : 'Empty');
   
   // Get duration and dimensions
   let duration = 0;
@@ -74,10 +61,8 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
 
   // Get duration for video/audio files using native Electron API
   if (type === 'video' || type === 'audio') {
-    console.log('⏱️  Getting media duration...');
     try {
       duration = await window.electronAPI.getMediaDuration(filePath);
-      console.log('⏱️  Media duration:', duration);
     } catch (error) {
       console.error('Could not get media duration:', error);
     }
@@ -85,18 +70,14 @@ export async function processMediaFile(filePath: string): Promise<MediaAsset> {
 
   // Get dimensions for images
   if (type === 'image') {
-    console.log('📏 Getting image dimensions...');
     try {
       const dimensions = await getImageDimensions(filePath);
       width = dimensions.width;
       height = dimensions.height;
-      console.log(`📏 Image dimensions: ${width}×${height}`);
     } catch (error) {
       console.error('Could not get image dimensions:', error);
     }
   }
-  
-  console.log('✅ Media file processed successfully');
   
   return {
     id,

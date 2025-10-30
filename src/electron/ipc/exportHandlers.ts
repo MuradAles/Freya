@@ -68,13 +68,9 @@ export function setupExportHandlers() {
   ipcMain.handle('export:start', async (event, tracks: Track[], mediaAssets: MediaAsset[], outputPath: string, resolution: string, canvasWidth?: number, canvasHeight?: number, quality: 'low' | 'medium' | 'high' = 'medium', canvasColor?: string) => {
     // Ensure canvasColor is always a valid hex color
     const validCanvasColor = (canvasColor && /^#[0-9A-Fa-f]{6}$/.test(canvasColor)) ? canvasColor : '#000000';
-    
-    console.log('🚀 Starting export...', { outputPath, resolution, canvasWidth, canvasHeight, quality, canvasColor, validCanvasColor });
-    console.log(`📊 Exporting ${tracks.length} tracks with ${mediaAssets.length} media assets`);
 
     // Use provided dimensions directly (they're already calculated to maintain aspect ratio)
     const res = { width: canvasWidth || 1920, height: canvasHeight || 1080 };
-    console.log(`📐 Export resolution: ${res.width}×${res.height} (quality: ${quality}, background: ${validCanvasColor})`);
 
     try {
       await exportTimeline({
@@ -85,13 +81,11 @@ export function setupExportHandlers() {
         quality,
         canvasColor: validCanvasColor,
         progressCallback: (progress) => {
-          // console.log(`📈 Export progress: ${progress}%`);
           // Send progress to renderer
           event.sender.send('export:progress', progress);
         }
       });
 
-      console.log('✅ Export complete!');
       return { success: true };
     } catch (error) {
       console.error('❌ Export failed:', error);
@@ -103,9 +97,7 @@ export function setupExportHandlers() {
 async function exportTimeline(job: ExportJob): Promise<void> {
   const { tracks, mediaAssets, outputPath, resolution, quality } = job;
   
-  // Log quality settings for debugging
   const crfValue = getCRFForQuality(quality);
-  console.log(`🎬 Export settings: Quality=${quality}, CRF=${crfValue}, Resolution=${resolution.width}×${resolution.height}, Background=${job.canvasColor}`);
   
   // Get all video/audio clips from all tracks
   const allClips: Array<{ clip: TimelineClip; media: MediaAsset; trackOrder: number }> = [];
@@ -123,33 +115,9 @@ async function exportTimeline(job: ExportJob): Promise<void> {
     throw new Error('No clips found on timeline');
   }
 
-  console.log(`\n==========================`);
-  console.log(`📹 EXPORT SUMMARY`);
-  console.log(`==========================`);
-  console.log(`Total tracks: ${tracks.length}`);
-  console.log(`Total clips to export: ${allClips.length}`);
-  
-  // Show what we're exporting
-  tracks.forEach((track, idx) => {
-    console.log(`\nTrack ${idx + 1} (Order: ${track.order}):`);
-    track.clips.forEach((clip, clipIdx) => {
-      const media = mediaAssets.find(a => a.id === clip.assetId);
-      if (media) {
-        console.log(`  Clip ${clipIdx + 1}: ${media.name}`);
-        console.log(`    Start: ${clip.startTime}s, Duration: ${clip.duration}s`);
-        console.log(`    Type: ${media.type}`);
-        if (clip.position) {
-          console.log(`    Position: x=${clip.position.x}, y=${clip.position.y}, w=${clip.position.width}, h=${clip.position.height}`);
-        }
-      }
-    });
-  });
-  console.log(`\n==========================\n`);
-  
   // Process each clip: trim, apply effects, save to temp file
   const tempDir = path.join(os.tmpdir(), 'freya-export-' + Date.now());
   fs.mkdirSync(tempDir, { recursive: true });
-  console.log(`📁 Created temp directory: ${tempDir}`);
 
   // Send initial progress
   job.progressCallback(5);
@@ -160,12 +128,6 @@ async function exportTimeline(job: ExportJob): Promise<void> {
   const clipProcessProgressWeight = 30; // 5% -> 35%
   for (let i = 0; i < allClips.length; i++) {
     const { clip, media, trackOrder } = allClips[i];
-    console.log(`\n🎬 Processing clip ${i + 1}/${allClips.length}:`);
-    console.log(`   File: ${media.name}`);
-    console.log(`   From: ${clip.startTime}s`);
-    console.log(`   Duration: ${clip.duration}s`);
-    console.log(`   Speed: ${clip.speed}x`);
-    console.log(`   Volume: ${clip.volume}`);
     
     const processedClip = await processClip(clip, media, resolution, tempDir, trackOrder);
     processedClips.push(processedClip);
@@ -173,11 +135,9 @@ async function exportTimeline(job: ExportJob): Promise<void> {
     // Update progress (5% -> 35%)
     const progress = 5 + (i + 1) * clipProcessProgressWeight / allClips.length;
     job.progressCallback(progress);
-    console.log(`   ✅ Clip ${i + 1} processed → temp file: ${processedClip.tempFile}`);
   }
 
   // Build FFmpeg complex filter for multi-track composition
-  console.log('\n🔗 Analyzing timeline structure...');
   job.progressCallback(35);
   
   // Sort clips by timeline position
@@ -185,26 +145,18 @@ async function exportTimeline(job: ExportJob): Promise<void> {
   
   // Calculate total timeline duration
   const maxEndTime = Math.max(...processedClips.map(c => c.clip.startTime + c.clip.duration));
-  console.log(`\n⏱️  Timeline duration: ${maxEndTime.toFixed(2)}s`);
   
   // Separate video/image and audio clips (images are treated as video)
   const videoClips = processedClips.filter(c => c.media.type === 'video' || c.media.type === 'image');
   const audioClips = processedClips.filter(c => c.media.type === 'audio');
-
-  console.log(`\n📊 COMPOSITION ANALYSIS:`);
-  console.log(`   Video clips: ${videoClips.filter(c => c.media.type === 'video').length}`);
-  console.log(`   Image clips: ${videoClips.filter(c => c.media.type === 'image').length}`);
-  console.log(`   Audio clips: ${audioClips.length}`);
   
   // Detect overlaps or if we need multi-track composition
   const hasOverlaps = detectOverlaps(videoClips);
   const needsMultiTrack = hasOverlaps || audioClips.length > 0 || videoClips.some(c => c.clip.position);
 
   if (needsMultiTrack) {
-    console.log(`   ✅ Using multi-track composition (overlaps: ${hasOverlaps}, audio tracks: ${audioClips.length}, positioned clips: ${videoClips.filter(c => c.clip.position).length})`);
     return buildMultiTrackComposition(videoClips, audioClips, maxEndTime, resolution, outputPath, job, tempDir);
   } else {
-    console.log(`   ✓ No overlapping clips - Using simple concatenation`);
     return buildSimpleComposition(sortedClips, audioClips, maxEndTime, outputPath, job, tempDir, mediaAssets);
   }
 }
@@ -220,9 +172,6 @@ function detectOverlaps(clips: ClipProcessing[]): boolean {
       const overlapEnd = Math.min(clip1End, clip2End);
       
       if (overlapEnd > overlapStart) {
-        const m1 = clips[i].media;
-        const m2 = clips[j].media;
-        console.log(`   • "${m1.name}" overlaps with "${m2.name}" (${(overlapEnd - overlapStart).toFixed(2)}s overlap)`);
         return true;
       }
     }
@@ -240,18 +189,10 @@ async function buildSimpleComposition(
   tempDir: string,
   mediaAssets: MediaAsset[]
 ): Promise<void> {
-  console.log(`\n📝 FINAL VIDEO SEQUENCE:`);
-  console.log(`Sequential clips:`);
-  sortedClips.forEach((c, idx) => {
-    const media = mediaAssets.find(a => a.id === c.clip.assetId);
-    console.log(`  ${idx + 1}. ${media?.name} - ${c.clip.startTime}s (${c.clip.duration}s)`);
-  });
-
   const fileListPath = path.join(tempDir, 'concat_list.txt');
   const fileList = sortedClips.map(c => `file '${c.tempFile.replace(/\\/g, '/')}'`).join('\n');
   fs.writeFileSync(fileListPath, fileList);
   
-  console.log(`\n🎥 Starting FFmpeg encoding to: ${outputPath}`);
   job.progressCallback(40);
 
   return new Promise((resolve, reject) => {
@@ -261,13 +202,10 @@ async function buildSimpleComposition(
 
     // Add audio clips for mixing
     audioClips.forEach(audioClip => {
-      console.log(`   🎵 Adding audio track: ${audioClip.media.name}`);
       command.input(audioClip.tempFile);
     });
 
     const crfValue = getCRFForQuality(job.quality);
-    console.log(`📊 Using CRF ${crfValue} for quality setting: ${job.quality}`);
-    console.log(`📐 Target resolution: ${job.resolution.width}×${job.resolution.height}`);
     
     // Force re-encoding by scaling to target resolution
     // This ensures CRF quality settings are actually applied (concat demuxer can't optimize this away)
@@ -280,14 +218,10 @@ async function buildSimpleComposition(
       .outputOptions('-crf', crfValue)
       .saveToFile(outputPath);
 
-    command.on('start', (cmdLine) => {
-      console.log('🔥 FFmpeg command:', cmdLine);
-      console.log(`📊 Verify CRF in command above - should be ${crfValue} for ${job.quality} quality`);
+    command.on('start', () => {
     });
 
     command.on('end', () => {
-      console.log('✅ Export complete!');
-      console.log(`📁 Output saved to: ${outputPath}`);
       fs.rmSync(tempDir, { recursive: true, force: true });
       job.progressCallback(100);
       resolve();
@@ -323,7 +257,6 @@ async function buildSimpleComposition(
       // Map FFmpeg progress: 40% -> 95% (save last 5% for finalization)
       const mappedProgress = 40 + (progressPercent || 0) * 0.55;
       job.progressCallback(mappedProgress);
-      // console.log(`⏳ FFmpeg progress: ${progressPercent?.toFixed(1) || 'unknown'}%`);
     });
   });
 }
@@ -338,8 +271,6 @@ async function buildMultiTrackComposition(
   job: ExportJob,
   tempDir: string
 ): Promise<void> {
-  console.log(`\n🎬 BUILDING MULTI-TRACK COMPOSITION:`);
-  
   // Sort video clips by track order first (lower track = on top), then by z-index, then by start time
   videoClips.sort((a, b) => {
     // Lower track order should be drawn last (on top)
@@ -352,20 +283,6 @@ async function buildMultiTrackComposition(
     
     return a.clip.startTime - b.clip.startTime;
   });
-  
-  console.log(`\nVideo timeline:`);
-  videoClips.forEach((c, idx) => {
-    const endTime = c.clip.startTime + c.clip.duration;
-    console.log(`  ${idx + 1}. ${c.media.name}: ${c.clip.startTime.toFixed(2)}s → ${endTime.toFixed(2)}s`);
-  });
-  
-  if (audioClips.length > 0) {
-    console.log(`\nAudio tracks:`);
-    audioClips.forEach((c, idx) => {
-      const endTime = c.clip.startTime + c.clip.duration;
-      console.log(`  ${idx + 1}. ${c.media.name}: ${c.clip.startTime.toFixed(2)}s → ${endTime.toFixed(2)}s`);
-    });
-  }
 
     job.progressCallback(40);
 
@@ -375,10 +292,6 @@ async function buildMultiTrackComposition(
       ...videoClips.map(clip => hasAudioStream(clip.tempFile)),
       ...audioClips.map(clip => hasAudioStream(clip.tempFile))
     ]).then(async (audioFlags: boolean[]) => {
-      console.log(`\n🔍 Audio detection complete`);
-      console.log(`   Video clips with audio: ${audioFlags.slice(0, videoClips.length).filter(Boolean).length}/${videoClips.length}`);
-      console.log(`   Audio-only clips with audio: ${audioFlags.slice(videoClips.length).filter(Boolean).length}/${audioClips.length}`);
-
       // Convert hex color to RGB for FFmpeg (format: 0xRRGGBB)
       // Remove # if present and convert to RGB format
       const bgColor = job.canvasColor || '#000000';
@@ -387,8 +300,6 @@ async function buildMultiTrackComposition(
       const g = parseInt(hexColor.substring(2, 4), 16);
       const b = parseInt(hexColor.substring(4, 6), 16);
       const colorValue = `0x${hexColor.toUpperCase()}`;
-      
-      console.log(`🎨 Using background color: ${bgColor} → ${colorValue}`);
       
       // Create base canvas with custom background color
       const command = ffmpeg()
@@ -404,11 +315,6 @@ async function buildMultiTrackComposition(
       audioClips.forEach(clip => {
         command.input(clip.tempFile);
       });
-      
-      console.log(`\n📥 Input structure:
-        Input 0: Black canvas
-        Video inputs: ${videoClips.length} (may have audio)
-        Audio-only inputs: ${audioClips.length}`);
 
       // Build complex filter
       const filterParts: string[] = [];
@@ -432,12 +338,6 @@ async function buildMultiTrackComposition(
           const y = Math.round(pos.y * resolution.height);
           const w = Math.round(pos.width * resolution.width);
           const h = Math.round(pos.height * resolution.height);
-          
-          console.log(`   📐 Clip: ${clip.media.name}`);
-          console.log(`      Normalized: x=${pos.x.toFixed(4)}, y=${pos.y.toFixed(4)}, w=${pos.width.toFixed(4)}, h=${pos.height.toFixed(4)}`);
-          console.log(`      Absolute: x=${x}, y=${y}, w=${w}, h=${h} (out of ${resolution.width}x${resolution.height})`);
-          console.log(`      Rotation: ${pos.rotation?.toFixed(2) || 0}°`);
-          console.log(`      Track Order: ${clip.trackOrder}, Time: ${startTime.toFixed(2)}s`);
           
           // Build filter chain: scale → rotate (if needed) → overlay
           const transformedLabel = `transformed${idx}`;
@@ -464,8 +364,6 @@ async function buildMultiTrackComposition(
             // New overlay position: (x + w/2 - ow/2, y + h/2 - oh/2)
             overlayX = Math.round(x + w / 2 - ow / 2);
             overlayY = Math.round(y + h / 2 - oh / 2);
-            
-            console.log(`      🔄 Rotation adjustment: center (${x + w/2}, ${y + h/2}) → overlay (${overlayX}, ${overlayY})`);
             
             filterParts.push(
               `[${inputIndex}:v]${scaleFilter},${rotationFilter}[${transformedLabel}]`
@@ -499,15 +397,12 @@ async function buildMultiTrackComposition(
       // Process audio from video clips - ONLY IF THEY HAVE AUDIO
       videoClips.forEach((clip, i) => {
         if (!audioFlags[i]) {
-          console.log(`   ⚠️  Skipping audio for ${clip.media.name} (no audio stream)`);
           return;
         }
 
         const videoInputIndex = i + 1;
         const startTime = clip.clip.startTime;
         const startMs = Math.floor(startTime * 1000); // Convert to milliseconds
-
-        console.log(`   🎵 Video audio ${i + 1}: ${clip.media.name} - delay by ${startTime.toFixed(3)}s (${startMs}ms)`);
 
         // Delay audio to match timeline position - use |all=1 to delay all channels
         const delayedLabel = `adelayed${audioDelayCounter}`;
@@ -520,15 +415,12 @@ async function buildMultiTrackComposition(
       audioClips.forEach((clip, i) => {
         const audioIndex = videoClips.length + i;
         if (!audioFlags[audioIndex]) {
-          console.log(`   ⚠️  Skipping audio for ${clip.media.name} (no audio stream)`);
           return;
         }
 
         const audioInputIndex = audioIndex + 1;
         const startTime = clip.clip.startTime;
         const startMs = Math.floor(startTime * 1000); // Convert to milliseconds
-
-        console.log(`   🎵 Audio clip ${i + 1}: ${clip.media.name} - delay by ${startTime.toFixed(3)}s (${startMs}ms)`);
 
         // Delay audio to match timeline position - use |all=1 to delay all channels
         const delayedLabel = `adelayed${audioDelayCounter}`;
@@ -548,13 +440,11 @@ async function buildMultiTrackComposition(
       }
 
       const complexFilter = filterParts.join(';');
-      console.log(`\n🔧 FFmpeg filter: ${complexFilter.substring(0, 200)}...`);
 
       // Determine if we have any audio outputs
       const hasAudioOutput = delayedAudioInputs.length > 0;
 
       const crfValue = getCRFForQuality(job.quality);
-      console.log(`📊 Using CRF ${crfValue} for quality setting: ${job.quality}`);
       
       command
         .complexFilter(complexFilter)
@@ -571,14 +461,10 @@ async function buildMultiTrackComposition(
         ].filter(Boolean))
         .saveToFile(outputPath);
 
-      command.on('start', (cmdLine) => {
-        console.log('🔥 FFmpeg command:', cmdLine);
-        console.log(`📊 Verify CRF in command above - should be ${crfValue} for ${job.quality} quality`);
+      command.on('start', () => {
       });
 
       command.on('end', () => {
-        console.log('✅ Export complete!');
-        console.log(`📁 Output saved to: ${outputPath}`);
         fs.rmSync(tempDir, { recursive: true, force: true });
         job.progressCallback(100);
         resolve();
@@ -615,7 +501,6 @@ async function buildMultiTrackComposition(
         // Map FFmpeg progress: 40% -> 95% (save last 5% for finalization)
         const mappedProgress = 40 + (progressPercent || 0) * 0.55;
         job.progressCallback(mappedProgress);
-        // console.log(`⏳ FFmpeg progress: ${progressPercent?.toFixed(1) || 'unknown'}%`);
       });
     }).catch(err => {
       console.error('❌ Error during audio detection:', err);
@@ -631,14 +516,12 @@ async function hasAudioStream(filePath: string): Promise<boolean> {
   return new Promise((resolve) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
       if (err || !metadata) {
-        console.log(`⚠️  Could not probe ${path.basename(filePath)} for audio:`, err?.message || 'Unknown error');
         resolve(false);
         return;
       }
       
       // Check if there are any audio streams
       const hasAudio = metadata.streams?.some(stream => stream.codec_type === 'audio') || false;
-      console.log(`   🎵 ${path.basename(filePath)} has audio: ${hasAudio}`);
       resolve(hasAudio);
     });
   });
@@ -651,15 +534,8 @@ async function processClip(
   tempDir: string,
   trackOrder: number
 ): Promise<ClipProcessing> {
-  console.log(`\n🎬 Processing: ${media.name}`);
-  console.log(`   Type: ${media.type}`);
-  console.log(`   Duration: ${clip.duration}s`);
-  console.log(`   Speed: ${clip.speed}x, Volume: ${clip.volume}`);
-  console.log(`   Input path: ${media.path}`);
-
   const inputPath = media.path;
   const outputClip = path.join(tempDir, `clip_${clip.id}.mp4`);
-  console.log(`   Output path: ${outputClip}`);
 
   const startTime = clip.trimStart || 0;
   const duration = clip.duration;
@@ -765,11 +641,9 @@ async function processClip(
 
     command
       .saveToFile(outputClip)
-      .on('start', (cmdLine) => {
-        console.log(`   🔧 FFmpeg command: ${cmdLine.substring(0, 200)}...`);
+      .on('start', () => {
       })
       .on('end', () => {
-        console.log(`   ✅ Processed successfully`);
         resolve({ clip, media, tempFile: outputClip, trackOrder });
       })
       .on('error', (err) => {

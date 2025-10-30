@@ -107,7 +107,6 @@ export default function RecordingCompleteDialog({
 
       // Save temp WebM file
       const tempWebMPath = finalPath.replace(targetExtension, tempExtension);
-      console.log('💾 Saving temporary WebM file:', tempWebMPath);
 
       const saveResult = await window.electronAPI.saveRecording(base64Data, tempWebMPath);
 
@@ -120,7 +119,6 @@ export default function RecordingCompleteDialog({
       // Convert to final format
       if (isAudioOnly) {
         // Convert to MP3 for audio-only recordings
-        console.log(`🎵 Converting to MP3 (${quality} quality)...`);
         const convertResult = await window.electronAPI?.convertRecordingToMP3?.(
           tempWebMPath,
           finalPath,
@@ -128,7 +126,6 @@ export default function RecordingCompleteDialog({
         );
 
         if (convertResult?.success) {
-          console.log('✅ MP3 saved successfully, cleaning up temp file');
           await window.electronAPI?.deleteFile?.(tempWebMPath);
           await onSave(finalPath, addToLibrary);
           onClose();
@@ -139,7 +136,6 @@ export default function RecordingCompleteDialog({
         }
       } else {
         // Convert to MP4 with selected quality and frame rate for video recordings
-        console.log(`🎬 Converting to MP4 (${quality} quality, ${frameRate} fps)...`);
         const convertResult = await window.electronAPI?.convertRecordingToMP4?.(
           tempWebMPath,
           finalPath,
@@ -148,7 +144,6 @@ export default function RecordingCompleteDialog({
         );
 
         if (convertResult?.success) {
-          console.log('✅ MP4 saved successfully, cleaning up temp file');
           await window.electronAPI?.deleteFile?.(tempWebMPath);
           await onSave(finalPath, addToLibrary);
           onClose();

@@ -281,33 +281,6 @@ export default function PropertiesPanel() {
         {/* Properties for Selected Clip */}
         {selectedClip && (
           <div className="space-y-6">
-            {/* Speed Control */}
-            {selectedClip.speed !== undefined && (
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-sm font-semibold text-gray-300">Speed</span>
-                </div>
-                <div className="bg-gray-700 rounded p-3 space-y-3">
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-2">
-                      Speed: {((selectedClip.speed ?? 1) * 100).toFixed(0)}%
-                    </label>
-                    <input 
-                      type="range" 
-                      min="0.25" 
-                      max="4" 
-                      step="0.05"
-                      value={selectedClip.speed ?? 1}
-                      onChange={(e) => updateClip(selectedClip.id, {
-                        speed: parseFloat(e.target.value)
-                      })}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Position Controls - Only show for clips with position */}
             {hasPosition && (
               <>
@@ -409,15 +382,6 @@ export default function PropertiesPanel() {
                       className="w-full bg-gray-600 text-white px-2 py-1 rounded text-sm"
                     />
                   </div>
-                </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <input 
-                    type="checkbox" 
-                    id="lockAspect" 
-                    defaultChecked
-                    className="rounded"
-                  />
-                  <label htmlFor="lockAspect" className="text-xs text-gray-400">Lock aspect ratio</label>
                 </div>
               </div>
             </div>

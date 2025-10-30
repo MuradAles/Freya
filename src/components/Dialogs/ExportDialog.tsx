@@ -74,7 +74,6 @@ export default function ExportDialog({ isOpen, onClose, onExport }: ExportDialog
     if (!isOpen) return;
 
     const handleProgress = (progress: number) => {
-      // console.log('📊 Progress update from main process:', progress);
       setExportProgress(progress);
     };
 

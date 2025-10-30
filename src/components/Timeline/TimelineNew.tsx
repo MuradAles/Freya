@@ -57,7 +57,6 @@ export default function TimelineNew() {
   // Listen for export progress updates
   useEffect(() => {
     const handleProgress = (progress: number) => {
-      // console.log('📊 Progress update from main process:', progress);
       setExportProgress(progress);
     };
 
@@ -803,7 +802,6 @@ export default function TimelineNew() {
                   try {
                     const electronAPI = (window as any).electronAPI;
                     const { canvasColor } = useSettingsStore.getState();
-                    console.log('🎨 Exporting with canvas color:', canvasColor);
                     // Use 'custom' as resolution parameter for backward compatibility, always use canvas dimensions
                     await electronAPI.exportVideo(tracks, mediaLibrary, settings.outputPath, 'custom', settings.customWidth, settings.customHeight, 'medium', canvasColor || '#000000');
                     
@@ -1080,11 +1078,9 @@ export default function TimelineNew() {
           onClose={() => setShowAIVideoDialog(false)}
           onVideoGenerated={async (filePath) => {
             try {
-              console.log('✅ AI content generated:', filePath);
               // Process and add to media library
               const mediaAsset = await processMediaFile(filePath);
               useMediaStore.getState().addMedia(mediaAsset);
-              console.log('✅ AI content added to media library:', mediaAsset.name);
             } catch (err) {
               console.error('Failed to add AI content to media library:', err);
             }

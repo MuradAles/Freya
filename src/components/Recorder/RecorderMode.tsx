@@ -133,28 +133,22 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
     ].filter(Boolean);
 
     if (videos.length > 0 && recordingStream) {
-      console.log('🎥 Setting up video previews for', videos.length, 'video elements');
-      console.log('📹 recordingStream is:', hasCameraOverlay ? 'COMPOSITED (screen+camera)' : 'RAW stream');
-      
-      videos.forEach((video, index) => {
+      videos.forEach((video) => {
         if (video) {
           video.srcObject = recordingStream;
           const playPromise = video.play();
           
           if (playPromise !== undefined) {
             playPromise
-              .then(() => console.log(`✅ Video ${index} preview playing`))
-              .catch(err => console.error(`❌ Video ${index} preview error:`, err));
+              .catch(err => console.error(`❌ Video preview error:`, err));
           }
         }
       });
 
-      // Log stream info once and store dimensions for preview
+      // Store dimensions for preview
       const videoTrack = recordingStream.getVideoTracks()[0];
       if (videoTrack) {
         const settings = videoTrack.getSettings();
-        console.log('🎥 Track settings:', settings);
-        console.log('📐 Track dimensions:', settings.width, 'x', settings.height);
         
         // Store recording dimensions to show actual recording area bounds
         if (settings.width && settings.height) {
@@ -425,7 +419,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
 
   const handleStartRecording = async (config: RecordingConfig) => {
     try {
-      console.log('Starting screen recording with config:', config);
       setScreenDialogOpen(false); // Close dialog first
 
       // Initialize preview position to bottom-right  
@@ -488,7 +481,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
           setPreviewStreamBeforeRecording(previewStream);
           setPendingRecordingConfig(config);
           setCurrentRecordingType('screen');
-          console.log('✅ Preview stream created - showing preview before recording');
         }
       } catch (previewErr) {
         console.error('Failed to create preview stream:', previewErr);
@@ -508,7 +500,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
         await startRecording({
           screenType: config.screenType,
           windowId: config.windowId,
-          customArea: config.customArea,
           includeMicrophone: config.includeMicrophone,
           microphoneId: config.microphoneId,
           cameraId: config.cameraId,
@@ -519,8 +510,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
             height: cameraOverlaySize.height
           } : undefined,
         });
-
-        console.log('✅ Recording started, showing preview overlay');
         
         // Store recording config for resize detection
         recordingConfigRef.current = { 
@@ -544,13 +533,11 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
 
   const handleStartCameraRecording = async (config: RecordingConfig) => {
     try {
-      console.log('Starting camera recording with config:', config);
       setCameraDialogOpen(false); // Close dialog first so preview can show
       
       await countdownAndExecute(async () => {
         await startRecording({
           cameraId: config.cameraId,
-          cameraPosition: config.cameraPosition,
           includeMicrophone: config.includeMicrophone,
           microphoneId: config.microphoneId,
         });
@@ -567,7 +554,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
 
   const handleStartAudioRecording = async (config: RecordingConfig) => {
     try {
-      console.log('Starting audio recording with config:', config);
       setAudioDialogOpen(false); // Close dialog first
 
       // Set recording type BEFORE starting to prevent video preview flash
@@ -597,8 +583,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
       // DON'T clear currentRecordingType yet - save dialog needs it to determine file format!
       // It will be cleared when the dialog closes
       setShowSaveDialog(true);
-      console.log('Recording stopped, blob size:', blob.size);
-      console.log('Recording type:', currentRecordingType);
       
       // Clean up preview stream if it exists
       if (previewStreamBeforeRecording) {
@@ -613,12 +597,9 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
   };
 
   const handleSaveRecording = async (filePath: string, addToLibrary: boolean) => {
-    console.log('Saving recording to:', filePath, 'Add to library:', addToLibrary);
-    
     try {
       // Add to media library if requested
       if (addToLibrary) {
-        console.log('📚 Adding recording to media library...');
         const mediaAsset = await processMediaFile(filePath);
         // Mark as recorded (not imported)
         const recordedAsset = {
@@ -626,7 +607,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
           source: 'recorded' as const
         };
         useMediaStore.getState().addMedia(recordedAsset);
-        console.log('✅ Recording added to media library:', recordedAsset.name);
       }
     } catch (err) {
       console.error('Failed to add recording to media library:', err);
@@ -692,8 +672,6 @@ export default function RecorderMode({ hidden = false }: RecorderModeProps) {
     }
     setAudioDialogOpen(true);
   };
-
-  console.log('🔍 Recording state:', { localIsRecording, hasStream: !!recordingStream });
 
   // Render overlay as portal so it persists across mode switches
   // Show preview stream BEFORE recording starts, or recording stream AFTER recording starts

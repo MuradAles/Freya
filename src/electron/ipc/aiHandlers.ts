@@ -8,10 +8,6 @@ export function setupAIHandlers() {
   // Generate AI Image using DALL-E
   ipcMain.handle('ai:generateImage', async (event, apiKey: string, prompt: string, model: string) => {
     try {
-      console.log('🎨 Generating AI image...');
-      console.log('   Model:', model);
-      console.log('   Prompt:', prompt);
-
       const openai = new OpenAI({ apiKey });
 
       const response = await openai.images.generate({
@@ -39,8 +35,6 @@ export function setupAIHandlers() {
 
       await downloadFile(imageUrl, imagePath);
 
-      console.log('✅ Image generated and saved:', imagePath);
-
       return {
         success: true,
         imagePath,
@@ -57,10 +51,6 @@ export function setupAIHandlers() {
   // Generate AI Video using Sora
   ipcMain.handle('ai:generateVideo', async (event, apiKey: string, prompt: string, model: string) => {
     try {
-      console.log('🎬 Generating AI video...');
-      console.log('   Model:', model);
-      console.log('   Prompt:', prompt);
-
       const openai = new OpenAI({ apiKey });
 
       // Note: Sora API might have different endpoint/parameters

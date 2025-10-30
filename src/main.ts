@@ -15,7 +15,6 @@ if (started) {
 // Initialize electron-audio-loopback for automatic system audio capture
 // This must be called before app.whenReady()
 initMain();
-console.log('✅ electron-audio-loopback initialized');
 
 // Enable system audio capture on Windows
 // These flags enable loopback audio capture (system sounds)
@@ -30,7 +29,6 @@ const createWindow = () => {
   // Check screen recording permissions (macOS)
   if (process.platform === 'darwin') {
     const status = systemPreferences.getMediaAccessStatus('screen');
-    console.log('📹 Screen recording permission status:', status);
     if (status !== 'granted') {
       console.warn('⚠️  Screen recording permission not granted. Requesting...');
       // This will trigger a system dialog on macOS
@@ -55,28 +53,23 @@ const createWindow = () => {
 
   // Set permissions for media access - GRANT ALL MEDIA PERMISSIONS
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
-    console.log('🔐 Permission requested:', permission);
     // Grant all media-related permissions for screen recording
     const allowedPermissions = ['media', 'mediaKeySystem', 'display-capture', 'screen'];
     if (allowedPermissions.includes(permission)) {
-      console.log('✅ Granted permission:', permission);
       callback(true);
     } else {
-      console.log('❌ Denied permission:', permission);
       callback(false);
     }
   });
 
   // Also handle permission checks (not requests)
   mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
-    console.log('🔍 Permission check:', permission);
     const allowedPermissions = ['media', 'mediaKeySystem', 'display-capture', 'screen'];
     return allowedPermissions.includes(permission);
   });
 
   // Modern Electron screen capture handler
   mainWindow.webContents.session.setDisplayMediaRequestHandler(async (request, callback) => {
-    console.log('📹 Display media request received');
     try {
       const { desktopCapturer } = await import('electron');
       const sources = await desktopCapturer.getSources({ 
@@ -84,13 +77,10 @@ const createWindow = () => {
         thumbnailSize: { width: 200, height: 200 }
       });
       
-      console.log('📹 Available sources:', sources.length);
-      
       // Grant access to the first screen by default
       // The actual source selection is done in the UI through the recording dialog
       const screenSource = sources.find(s => s.id.startsWith('screen:'));
       if (screenSource) {
-        console.log('✅ Granting access to:', screenSource.name);
         // Try to enable system audio capture
         // Note: This may not work on all Windows systems without "Stereo Mix" or similar enabled
         try {
@@ -100,7 +90,6 @@ const createWindow = () => {
           callback({ video: screenSource });
         }
       } else {
-        console.error('❌ No screen sources available');
         callback({});
       }
     } catch (error) {

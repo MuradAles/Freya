@@ -76,18 +76,15 @@ export default function MediaItem({ media }: MediaItemProps) {
   
   const handleDoubleClick = () => {
     // TODO: Add to timeline
-    console.log('Double-click to add to timeline:', media.name);
   };
 
   // Load file as data URL when hovering (audio only)
   const loadPreviewData = async () => {
     // Audio preview loads file as data URL
     if (!previewDataURL && media.type === 'audio') {
-      console.log('🔄 Loading audio preview for:', media.name);
       try {
         const dataURL = await window.electronAPI.readFileAsDataURL(media.path);
         if (dataURL) {
-          console.log('✅ Audio preview loaded, length:', dataURL.length);
           setPreviewDataURL(dataURL);
         } else {
           console.error('❌ No data URL returned');
@@ -230,7 +227,7 @@ export default function MediaItem({ media }: MediaItemProps) {
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
                   }}
-                  onLoad={() => console.log('Thumbnail loaded for:', media.name)}
+                  onLoad={() => {}}
                 />
                 
                 {/* Duration overlay at bottom-left - hide when hovering */}
@@ -261,11 +258,9 @@ export default function MediaItem({ media }: MediaItemProps) {
             autoPlay
             className="hidden"
             onPlay={() => {
-              console.log('🔊 Audio started playing');
               setIsAudioPlaying(true);
             }}
             onPause={() => {
-              console.log('⏸️ Audio paused');
               setIsAudioPlaying(false);
             }}
             onError={(e) => console.error('❌ Audio error:', e.target)}

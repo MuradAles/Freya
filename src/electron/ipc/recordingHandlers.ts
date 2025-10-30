@@ -21,7 +21,6 @@ export function setupRecordingHandlers() {
   // Configure FFmpeg path
   const ffmpegPath = getFfmpegPath();
   ffmpeg.setFfmpegPath(ffmpegPath);
-  console.log('✅ FFmpeg configured at:', ffmpegPath);
   // Get available screen/window sources for recording
   ipcMain.handle('recording:getSources', async () => {
     try {
@@ -29,8 +28,6 @@ export function setupRecordingHandlers() {
         types: ['screen', 'window'],
         thumbnailSize: { width: 200, height: 200 }
       });
-
-      console.log('🎥 Available recording sources:', sources.length);
 
       return sources.map(source => ({
         id: source.id,
@@ -57,9 +54,6 @@ export function setupRecordingHandlers() {
       
       // Write file
       fs.writeFileSync(filePath, buffer);
-      
-      console.log('✅ Recording saved to:', filePath);
-      console.log('📊 File size:', (buffer.length / 1024 / 1024).toFixed(2), 'MB');
       
       return { success: true, filePath, fileSize: buffer.length };
     } catch (error) {
@@ -103,12 +97,6 @@ export function setupRecordingHandlers() {
   // Convert WebM recording to MP4 with quality and frame rate options
   ipcMain.handle('recording:convertToMP4', async (event, webmPath: string, mp4Path: string, quality: 'high' | 'medium' | 'low' = 'medium', targetFrameRate: number = 60) => {
     try {
-      console.log('🎬 Converting WebM to MP4...');
-      console.log('   Source:', webmPath);
-      console.log('   Target:', mp4Path);
-      console.log('   Quality:', quality);
-      console.log('   Frame Rate:', targetFrameRate);
-
       // Map quality to CRF values (lower = better quality, larger file)
       const crfMap = {
         high: '18',    // Visually lossless, ~5-10 MB/min
@@ -129,18 +117,15 @@ export function setupRecordingHandlers() {
             '-movflags', '+faststart', // Web-optimized MP4
             '-threads', '0'           // Use all CPU cores
           ])
-          .on('start', (cmdLine) => {
-            console.log('🔥 FFmpeg command:', cmdLine);
+          .on('start', () => {
           })
           .on('progress', (progress) => {
             // Send progress to renderer
             if (progress.percent) {
               event.sender.send('recording:compressionProgress', progress.percent);
-              console.log(`⏳ Compression progress: ${progress.percent.toFixed(1)}%`);
             }
           })
           .on('end', () => {
-            console.log('✅ WebM → MP4 conversion complete');
             event.sender.send('recording:compressionProgress', 100);
             resolve({ success: true });
           })
@@ -159,10 +144,6 @@ export function setupRecordingHandlers() {
   // Convert WebM recording to MP3 (audio-only)
   ipcMain.handle('recording:convertToMP3', async (event, webmPath: string, mp3Path: string, quality: 'high' | 'medium' | 'low' = 'medium') => {
     try {
-      console.log('🎵 Converting WebM to MP3...');
-      console.log('   Source:', webmPath);
-      console.log('   Target:', mp3Path);
-      console.log('   Quality:', quality);
 
       // Map quality to audio bitrate (kbps)
       const bitrateMap = {
@@ -180,18 +161,15 @@ export function setupRecordingHandlers() {
           .outputOptions([
             '-q:a', '2'  // MP3 quality (0-9, lower is better)
           ])
-          .on('start', (cmdLine) => {
-            console.log('🔥 FFmpeg command:', cmdLine);
+          .on('start', () => {
           })
           .on('progress', (progress) => {
             // Send progress to renderer
             if (progress.percent) {
               event.sender.send('recording:compressionProgress', progress.percent);
-              console.log(`⏳ Compression progress: ${progress.percent.toFixed(1)}%`);
             }
           })
           .on('end', () => {
-            console.log('✅ WebM → MP3 conversion complete');
             event.sender.send('recording:compressionProgress', 100);
             resolve({ success: true });
           })
@@ -212,7 +190,6 @@ export function setupRecordingHandlers() {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log('🗑️  Deleted file:', filePath);
       }
     } catch (error) {
       console.error('Error deleting file:', error);

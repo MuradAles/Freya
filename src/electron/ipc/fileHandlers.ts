@@ -160,7 +160,6 @@ export function setupFileHandlers() {
           const thumbnail = await nativeImage.createThumbnailFromPath(filePath, { width: 200, height: 200 });
           return thumbnail.toDataURL();
         } catch (e) {
-          console.log('Could not create video thumbnail, returning null');
           return null;
         }
       } else if (type === 'audio') {
@@ -179,13 +178,11 @@ export function setupFileHandlers() {
     return new Promise((resolve) => {
       ffmpeg.ffprobe(filePath, (err, metadata) => {
         if (err || !metadata) {
-          console.log('Could not get media duration:', err);
           resolve(0);
           return;
         }
 
         const duration = metadata.format.duration || 0;
-        console.log('✅ Got media duration:', duration);
         resolve(duration);
       });
     });

@@ -158,7 +158,7 @@ export const CanvasControls = ({
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-300 mb-2">Common Resolutions</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {commonResolutions.map((preset) => (
                   <button
                     key={preset.name}

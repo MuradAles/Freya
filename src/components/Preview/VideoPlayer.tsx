@@ -16,7 +16,6 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
       if (src) {
         // Convert Windows path to file:// URL
         const fileURL = pathToFileURL(src);
-        console.log('🎬 Loading video:', fileURL);
         setVideoSrc(fileURL);
         
         // Reset duration when source changes
@@ -49,7 +48,6 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
         duration > 0 &&
         duration < 86400 // 24 hours max
       ) {
-        console.log('✅ Valid video duration:', duration);
         if (onDurationUpdate) {
           onDurationUpdate(duration);
         }
@@ -58,7 +56,6 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
         // Try again after a short delay - sometimes metadata needs more time
         setTimeout(() => {
           if (video.duration && isFinite(video.duration) && video.duration > 0 && video.duration < 86400) {
-            console.log('✅ Retry: Valid video duration:', video.duration);
             if (onDurationUpdate) {
               onDurationUpdate(video.duration);
             }

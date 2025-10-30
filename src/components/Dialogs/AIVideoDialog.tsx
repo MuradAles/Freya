@@ -36,8 +36,6 @@ export default function AIVideoDialog({ onClose, onVideoGenerated }: AIVideoDial
     setError(null);
 
     try {
-      console.log('Generating image with prompt:', prompt);
-
       // Generate image with DALL-E
       const result = await window.electronAPI?.generateAIImage?.(
         openaiApiKey,

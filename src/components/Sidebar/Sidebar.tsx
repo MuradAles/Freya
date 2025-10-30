@@ -51,36 +51,28 @@ export default function Sidebar() {
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    console.log('Dropped files count:', files.length);
     
     const filePaths: string[] = [];
     
     for (const file of files) {
-      console.log('Processing file:', file.name, file.type);
-      
       // Use the recommended method: webUtils.getPathForFile
       let path: string | null = null;
       
       if (window.electronAPI && window.electronAPI.getPathForFile) {
         path = window.electronAPI.getPathForFile(file);
-        console.log('✓ Got path from webUtils.getPathForFile:', path);
       } else {
         // Fallback: Try legacy File.path (may not work in Electron 32+)
         const fileObj = file as any;
         path = fileObj.path;
-        console.log('⚠ Using legacy File.path:', path);
       }
       
       if (path) {
         filePaths.push(path);
-        console.log('✓ Added path to list:', path);
       } else {
         console.error('✗ Could not get path for file:', file.name);
         alert(`Could not access file path for "${file.name}". Please use the "Import Media" button instead.`);
       }
     }
-
-    console.log(`Total file paths extracted: ${filePaths.length}`);
 
     if (filePaths.length > 0) {
       await processFiles(filePaths);

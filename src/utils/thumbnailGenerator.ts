@@ -7,11 +7,6 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
     // file:///C:/path/to/file
     const fileUrl = `file:///${normalizedPath}`;
     
-    console.log('🎨 Generating thumbnail for:', type);
-    console.log('  Original path:', filePath);
-    console.log('  Normalized path:', normalizedPath);
-    console.log('  File URL:', fileUrl);
-    
     if (type === 'image') {
       // For images, use the file URL directly
       const img = new Image();
@@ -19,8 +14,7 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
       img.src = fileUrl;
       
       img.onload = () => {
-        console.log('✅ Image loaded successfully. Creating thumbnail...');
-         // Create a canvas to resize the image to thumbnail size
+        // Create a canvas to resize the image to thumbnail size
          const canvas = document.createElement('canvas');
          const maxWidth = 400;
          const maxHeight = 400;
@@ -47,7 +41,6 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
           const dataUrl = canvas.toDataURL('image/png');
-          console.log('✅ Image thumbnail generated');
           resolve(dataUrl);
         } else {
           console.error('❌ Canvas context failed');
@@ -63,25 +56,21 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
       
       // Timeout after 5 seconds
       setTimeout(() => {
-        console.log('⏰ Image thumbnail timeout');
         resolve('');
       }, 5000);
     } else if (type === 'video') {
       // For videos, extract first frame
-      console.log('📹 Creating video thumbnail...');
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.crossOrigin = 'anonymous';
       video.src = fileUrl;
       
       video.onloadedmetadata = () => {
-        console.log('✅ Video metadata loaded');
         video.currentTime = 0.1; // Seek to 0.1 seconds
       };
       
       video.onseeked = () => {
         try {
-          console.log('✅ Video frame ready');
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth || 400;
           canvas.height = video.videoHeight || 300;
@@ -90,7 +79,6 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
           if (ctx) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const dataUrl = canvas.toDataURL('image/png');
-            console.log('✅ Video thumbnail generated');
             resolve(dataUrl);
           } else {
             console.error('❌ Canvas context failed for video');
@@ -110,7 +98,6 @@ export async function generateThumbnail(filePath: string, type: 'video' | 'audio
       
       // Timeout after 5 seconds
       setTimeout(() => {
-        console.log('⏰ Video thumbnail timeout');
         resolve('');
       }, 5000);
     } else {
@@ -145,26 +132,21 @@ export function getVideoDuration(filePath: string): Promise<number> {
     const normalizedPath = filePath.replace(/\\/g, '/');
     const fileUrl = `file:///${normalizedPath}`;
     
-    console.log('Getting video duration for:', filePath, 'URL:', fileUrl);
-    
     const video = document.createElement('video');
     video.preload = 'metadata';
     video.crossOrigin = 'anonymous';
     video.src = fileUrl;
     
     video.onloadedmetadata = () => {
-      console.log('Video metadata loaded, duration:', video.duration);
       resolve(video.duration || 0);
     };
     
-    video.onerror = (e) => {
-      console.error('Video duration error:', e);
+    video.onerror = () => {
       resolve(0);
     };
     
     // Timeout
     setTimeout(() => {
-      console.log('Video duration timeout');
       resolve(0);
     }, 5000);
   });

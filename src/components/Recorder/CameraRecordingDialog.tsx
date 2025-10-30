@@ -6,7 +6,6 @@ interface CameraRecordingDialogProps {
   onClose: () => void;
   onStart: (config: {
     cameraId: string;
-    cameraPosition: string;
     includeMicrophone: boolean;
     microphoneId?: string;
   }) => void;
@@ -17,22 +16,9 @@ interface CameraDevice {
   label: string;
 }
 
-const CAMERA_POSITIONS = [
-  { id: 'TL', label: 'Top-Left' },
-  { id: 'TC', label: 'Top-Center' },
-  { id: 'TR', label: 'Top-Right' },
-  { id: 'ML', label: 'Middle-Left' },
-  { id: 'C', label: 'Center' },
-  { id: 'MR', label: 'Middle-Right' },
-  { id: 'BL', label: 'Bottom-Left' },
-  { id: 'BC', label: 'Bottom-Center' },
-  { id: 'BR', label: 'Bottom-Right' },
-];
-
 export default function CameraRecordingDialog({ isOpen, onClose, onStart }: CameraRecordingDialogProps) {
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [cameraPosition, setCameraPosition] = useState<string>('BR');
   const [includeMicrophone, setIncludeMicrophone] = useState(false);
   const [microphones, setMicrophones] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string>('');
@@ -147,7 +133,6 @@ export default function CameraRecordingDialog({ isOpen, onClose, onStart }: Came
     stopPreview(); // Stop preview before starting recording
     onStart({
       cameraId: selectedCameraId,
-      cameraPosition,
       includeMicrophone,
       microphoneId: includeMicrophone ? selectedMicrophoneId : undefined,
     });
@@ -190,26 +175,6 @@ export default function CameraRecordingDialog({ isOpen, onClose, onStart }: Came
                     />
                     <span className="text-white">{camera.label}</span>
                   </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Camera Position Selector */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-300 mb-3">Camera Position on Screen:</label>
-              <div className="grid grid-cols-3 gap-2">
-                {CAMERA_POSITIONS.map((pos) => (
-                  <button
-                    key={pos.id}
-                    onClick={() => setCameraPosition(pos.id)}
-                    className={`aspect-square rounded-lg border-2 transition-all ${
-                      cameraPosition === pos.id
-                        ? 'bg-purple-600 border-purple-400 text-white'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    <span className="text-xs font-medium">{pos.label}</span>
-                  </button>
                 ))}
               </div>
             </div>
